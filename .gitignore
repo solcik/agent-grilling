@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+coverage/
+.direnv/
+.grill-state/
+.state/
+*.log
+.DS_Store
