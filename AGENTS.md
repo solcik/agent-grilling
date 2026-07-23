@@ -40,9 +40,9 @@ Pinned references (read these — they are ground truth at the revision in use):
   (see `examples/form`, `examples/todo`, `packages/markdown`, `packages/typing-game/server`
   for an Effect HttpApi server in the same ecosystem).
 - **The working UX prototype to port** (zero-dep Node, proves the inbox, dark-by-default,
-  options-with-recommended, Accept-all-recommended, per-session isolation): the
-  `grilling-panel/` dir in the finvestor-front session scratchpad — reproduce its look and
-  behavior in Foldkit; do not ship its Node server.
+  options-with-recommended, Accept-all-recommended, per-session isolation): `prototype/` in
+  this repo (`node prototype/serve.mjs`) — reproduce its look and behavior in Foldkit; do not
+  ship its Node server.
 
 ## The one binary: `grill`
 

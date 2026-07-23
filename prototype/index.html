@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grilling panel</title>
+    <!-- Dark by default; apply a saved light choice before first paint to avoid a flash. -->
+    <script>
+      try { if (localStorage.getItem('grill-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}
+    </script>
+    <style>
+      /* Dark is the default palette. Light is opt-in via the header toggle (data-theme="light"). */
+      :root {
+        --bg: #0d1016;
+        --panel: #151a22;
+        --panel-2: #11151c;
+        --ink: #e7ecf3;
+        --ink-soft: #98a3b3;
+        --line: #242b36;
+        --line-strong: #313a48;
+        --accent: #5a8bff;
+        --accent-soft: #17233d;
+        --rec: #35d19a;
+        --rec-soft: #123027;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.35);
+        --radius: 14px;
+      }
+      :root[data-theme="light"] {
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --panel-2: #fbfcfd;
+        --ink: #14181f;
+        --ink-soft: #5b6472;
+        --line: #e4e8ee;
+        --line-strong: #d0d6df;
+        --accent: #2f6df6;
+        --accent-soft: #eaf1ff;
+        --rec: #0f9d6b;
+        --rec-soft: #e6f7f0;
+        --shadow: 0 1px 2px rgba(20, 24, 31, 0.06), 0 8px 24px rgba(20, 24, 31, 0.06);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .layout { display: flex; align-items: stretch; min-height: 100vh; }
+
+      /* Sidebar inbox */
+      .sidebar {
+        width: 264px; flex: none; background: var(--panel-2);
+        border-right: 1px solid var(--line); padding: 16px 12px;
+        position: sticky; top: 0; height: 100vh; overflow: auto;
+        display: flex; flex-direction: column; gap: 4px;
+      }
+      .side-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 0 3px; }
+      .side-head .brand { font-weight: 680; font-size: 15px; letter-spacing: -0.01em; }
+      .side-head .badge {
+        font-size: 11px; font-weight: 700; color: #fff; background: var(--accent);
+        border-radius: 999px; padding: 1px 7px; min-width: 18px; text-align: center;
+      }
+      .side-head .badge.zero { background: var(--line-strong); }
+      .side-head .spacer { flex: 1; }
+      .theme-toggle {
+        padding: 3px 8px; font-size: 13px; line-height: 1;
+        border-radius: 8px; border: 1px solid var(--line); background: var(--panel);
+        color: var(--ink-soft); cursor: pointer;
+      }
+      .theme-toggle:hover { border-color: var(--accent); color: var(--ink); }
+      .session-item {
+        display: block; width: 100%; text-align: left; font: inherit;
+        padding: 9px 11px; border-radius: 10px; border: 1px solid transparent;
+        background: transparent; color: var(--ink); cursor: pointer; margin-bottom: 3px;
+      }
+      .session-item:hover { background: var(--panel); }
+      .session-item.active { background: var(--panel); border-color: var(--accent); }
+      .session-item.answered .session-title { color: var(--ink-soft); }
+      .session-title { font-weight: 600; font-size: 13.5px; line-height: 1.35; }
+      .session-sub { font-size: 12px; color: var(--ink-soft); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+      .pending-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+      .answered-check { color: var(--rec); font-weight: 700; }
+      .side-conn { margin-top: auto; padding: 8px 3px 0; font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; gap: 7px; }
+      .side-conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+      .side-conn .dot.live { background: var(--rec); box-shadow: 0 0 0 3px var(--rec-soft); }
+
+      /* Content */
+      .content { flex: 1; min-width: 0; }
+      .wrap { max-width: 820px; margin: 0 auto; padding: 28px 24px 120px; }
+      .round-title { font-size: 22px; font-weight: 680; letter-spacing: -0.01em; margin: 0 0 6px; }
+      .session-tag { font-size: 12px; color: var(--ink-soft); margin-bottom: 12px; }
+      .intro {
+        color: var(--ink-soft); font-size: 14px; margin: 0 0 22px;
+        background: var(--panel-2); border: 1px solid var(--line);
+        border-radius: 12px; padding: 12px 14px;
+      }
+      .intro code { background: rgba(127,127,127,.16); padding: 0 4px; border-radius: 5px; font-size: 12.5px; }
+      .intro strong { color: var(--ink); }
+      .card {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: var(--radius); box-shadow: var(--shadow);
+        padding: 18px 18px 16px; margin-bottom: 16px;
+      }
+      .q-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
+      .chip {
+        font-size: 11px; font-weight: 640; text-transform: uppercase; letter-spacing: .04em;
+        color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 3px 9px;
+      }
+      .q-text { font-size: 16px; font-weight: 620; margin: 6px 0 14px; }
+      .options { display: flex; flex-direction: column; gap: 9px; }
+      label.opt {
+        display: flex; gap: 11px; align-items: flex-start; cursor: pointer;
+        border: 1.5px solid var(--line); border-radius: 11px; padding: 11px 13px;
+        background: var(--panel-2); transition: border-color .12s, background .12s;
+      }
+      label.opt:hover { border-color: var(--line-strong); }
+      label.opt.sel { border-color: var(--accent); background: var(--accent-soft); }
+      label.opt input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+      .opt-body { flex: 1; min-width: 0; }
+      .opt-label { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .rec-badge {
+        font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+        color: var(--rec); background: var(--rec-soft); border-radius: 999px; padding: 2px 8px;
+      }
+      .opt-desc { color: var(--ink-soft); font-size: 13px; margin-top: 3px; white-space: pre-wrap; }
+      .other-row { margin-top: 9px; }
+      .other-row input, .notes textarea {
+        width: 100%; background: var(--panel-2); color: var(--ink);
+        border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 11px;
+        font: inherit; font-size: 14px;
+      }
+      .other-row input:focus, .notes textarea:focus { outline: none; border-color: var(--accent); }
+      .notes { margin-top: 12px; }
+      .notes label { display: block; font-size: 12px; color: var(--ink-soft); margin-bottom: 5px; }
+      .notes textarea { min-height: 46px; resize: vertical; }
+      .bar {
+        position: fixed; left: 264px; right: 0; bottom: 0;
+        background: color-mix(in srgb, var(--panel) 88%, transparent);
+        backdrop-filter: saturate(1.4) blur(8px);
+        border-top: 1px solid var(--line); padding: 14px 20px;
+      }
+      .bar-inner { max-width: 820px; margin: 0 auto; display: flex; gap: 10px; align-items: center; }
+      .bar .hint { color: var(--ink-soft); font-size: 13px; flex: 1; }
+      button.action {
+        font: inherit; font-weight: 620; border-radius: 10px; padding: 10px 16px;
+        border: 1.5px solid var(--line-strong); background: var(--panel); color: var(--ink);
+        cursor: pointer; transition: transform .06s, background .12s, border-color .12s;
+      }
+      button.action:hover { border-color: var(--accent); }
+      button.action:active { transform: translateY(1px); }
+      button.action.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button.action.rec { background: var(--rec); border-color: var(--rec); color: #fff; }
+      button.action:disabled { opacity: .5; cursor: not-allowed; }
+      .state-msg { text-align: center; color: var(--ink-soft); padding: 72px 20px; }
+      .state-msg .big { font-size: 17px; color: var(--ink); font-weight: 620; margin-bottom: 6px; }
+      .pulse { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--rec);
+               margin-right: 7px; animation: pulse 1.4s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+
+      @media (max-width: 720px) {
+        .layout { flex-direction: column; }
+        .sidebar { width: auto; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--line); }
+        .side-conn { margin-top: 8px; }
+        .bar { left: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="side-head">
+          <span class="brand">Grilling</span>
+          <span class="badge zero" id="pendingBadge">0</span>
+          <span class="spacer"></span>
+          <button class="theme-toggle" id="themeToggle" type="button" title="Toggle light / dark">☀</button>
+        </div>
+        <div id="sessionList"></div>
+        <div class="side-conn"><span class="dot" id="dot"></span><span id="conn">connecting…</span></div>
+      </aside>
+      <div class="content">
+        <div class="wrap"><main id="app"></main></div>
+      </div>
+    </div>
+    <div class="bar" id="bar" style="display:none">
+      <div class="bar-inner">
+        <span class="hint" id="hint"></span>
+        <button class="action rec" id="acceptRec" type="button">✓ Accept all recommended</button>
+        <button class="action primary" id="submit" type="button">Submit answers</button>
+      </div>
+    </div>
+
+    <script>
+      // Pure DOM construction throughout — no innerHTML, all text via textContent.
+      const $ = (id) => document.getElementById(id);
+      const app = $('app'), bar = $('bar');
+
+      let sessions = [];        // inbox rows from /api/sessions
+      let active = null;        // selected sessionId
+      let round = null;         // currently rendered round object
+      let renderedRoundId = null;
+
+      // Theme: dark by default; a manual choice persists to localStorage. The head script
+      // already applied a saved light choice pre-paint; here we keep icon and toggle in sync.
+      const root = document.documentElement;
+      const isLight = () => root.getAttribute('data-theme') === 'light';
+      const syncThemeIcon = () => { $('themeToggle').textContent = isLight() ? '☾' : '☀'; };
+      $('themeToggle').addEventListener('click', () => {
+        if (isLight()) { root.removeAttribute('data-theme'); localStorage.removeItem('grill-theme'); }
+        else { root.setAttribute('data-theme', 'light'); localStorage.setItem('grill-theme', 'light'); }
+        syncThemeIcon();
+      });
+      syncThemeIcon();
+
+      function el(tag, props, ...kids) {
+        const n = document.createElement(tag);
+        if (props) for (const [k, v] of Object.entries(props)) {
+          if (k === 'class') n.className = v;
+          else if (k === 'text') n.textContent = v;
+          else if (k === 'dataset') Object.assign(n.dataset, v);
+          else if (k in n) n[k] = v; else n.setAttribute(k, v);
+        }
+        for (const kid of kids) if (kid != null) n.append(kid);
+        return n;
+      }
+
+      // Render inline **bold** and `code` as real nodes (split on a capturing group — no HTML parsing).
+      function inlineMd(text, parent) {
+        String(text).split(/(\*\*[^*]+\*\*|`[^`]+`)/g).forEach((tok) => {
+          if (!tok) return;
+          if (tok.length > 4 && tok.startsWith('**') && tok.endsWith('**'))
+            parent.append(el('strong', { text: tok.slice(2, -2) }));
+          else if (tok.length > 2 && tok.startsWith('`') && tok.endsWith('`'))
+            parent.append(el('code', { text: tok.slice(1, -1) }));
+          else parent.append(document.createTextNode(tok));
+        });
+      }
+      function renderIntro(text) {
+        const box = el('div', { class: 'intro' });
+        String(text).split('\n').forEach((line, i) => { if (i) box.append(el('br')); inlineMd(line, box); });
+        return box;
+      }
+
+      // ---- sidebar inbox ----
+      function renderSidebar() {
+        const list = $('sessionList');
+        list.replaceChildren();
+        if (!sessions.length) {
+          list.append(el('div', { class: 'session-sub', text: 'No sessions yet.' }));
+        }
+        sessions.forEach((s) => {
+          const title = el('div', { class: 'session-title', text: s.title });
+          const sub = el('div', { class: 'session-sub' });
+          if (s.answered) { sub.append(el('span', { class: 'answered-check', text: '✓' }), document.createTextNode('answered')); }
+          else { sub.append(el('span', { class: 'pending-dot' }), document.createTextNode(s.count + ' question' + (s.count === 1 ? '' : 's'))); }
+          const item = el('button', {
+            class: 'session-item' + (s.sessionId === active ? ' active' : '') + (s.answered ? ' answered' : ''),
+            type: 'button',
+          }, title, sub);
+          item.addEventListener('click', () => { active = s.sessionId; renderedRoundId = null; loadAndRender(s.sessionId); renderSidebar(); });
+          list.append(item);
+        });
+        const pending = sessions.filter((s) => !s.answered).length;
+        const badge = $('pendingBadge');
+        badge.textContent = String(pending);
+        badge.classList.toggle('zero', pending === 0);
+      }
+
+      // ---- active round ----
+      function syncSel(qid) {
+        document.querySelectorAll('label.opt').forEach((l) => {
+          const inp = l.querySelector('input');
+          if (inp && inp.name === qid) l.classList.toggle('sel', inp.checked);
+        });
+      }
+      function optionEl(qid, opt, multi) {
+        const input = el('input', { type: multi ? 'checkbox' : 'radio', name: qid, value: opt.label });
+        if (opt.recommended) input.checked = true;
+        input.addEventListener('change', () => syncSel(qid));
+        const labelLine = el('div', { class: 'opt-label' }, document.createTextNode(opt.label));
+        if (opt.recommended) labelLine.append(el('span', { class: 'rec-badge', text: 'recommended' }));
+        const body = el('div', { class: 'opt-body' }, labelLine);
+        if (opt.description) body.append(el('div', { class: 'opt-desc', text: opt.description }));
+        return el('label', { class: 'opt' }, input, body);
+      }
+      function renderRound(r) {
+        round = r; renderedRoundId = r.roundId;
+        app.replaceChildren();
+        if (r.title) app.append(el('div', { class: 'round-title', text: r.title }));
+        app.append(el('div', { class: 'session-tag', text: 'session: ' + active + ' · round ' + r.roundId }));
+        if (r.intro) app.append(renderIntro(r.intro));
+        (r.questions || []).forEach((q) => {
+          const head = el('div', { class: 'q-head' });
+          if (q.header) head.append(el('span', { class: 'chip', text: q.header }));
+          const opts = el('div', { class: 'options' });
+          (q.options || []).forEach((o) => opts.append(optionEl(q.id, o, !!q.multiSelect)));
+          const card = el('div', { class: 'card', dataset: { qid: q.id } },
+            head, el('div', { class: 'q-text', text: q.question }), opts);
+          if (q.allowOther !== false)
+            card.append(el('div', { class: 'other-row' },
+              el('input', { type: 'text', placeholder: 'Other / free text (overrides selection above)…', dataset: { other: q.id } })));
+          if (q.allowNotes !== false)
+            card.append(el('div', { class: 'notes' },
+              el('label', { text: 'Notes (optional)' }),
+              el('textarea', { placeholder: 'Reasoning, caveats, anything to add…', dataset: { notes: q.id } })));
+          app.append(card);
+          syncSel(q.id);
+        });
+        const count = (r.questions || []).length;
+        bar.style.display = count ? 'block' : 'none';
+        $('submit').disabled = false; $('acceptRec').disabled = false;
+        $('hint').textContent = count + ' question' + (count === 1 ? '' : 's') + ' · recommended pre-selected';
+      }
+
+      function collect() {
+        const answers = {};
+        (round.questions || []).forEach((q) => {
+          const selected = [...document.querySelectorAll('input[name="' + q.id + '"]:checked')].map((i) => i.value);
+          const otherEl = document.querySelector('[data-other="' + q.id + '"]');
+          const notesEl = document.querySelector('[data-notes="' + q.id + '"]');
+          answers[q.id] = {
+            selected,
+            other: otherEl && otherEl.value.trim() ? otherEl.value.trim() : null,
+            notes: notesEl && notesEl.value.trim() ? notesEl.value.trim() : null,
+          };
+        });
+        return answers;
+      }
+
+      function messageState(bigText, subText, withPulse) {
+        const big = el('div', { class: 'big' });
+        if (withPulse) big.append(el('span', { class: 'pulse' }));
+        big.append(document.createTextNode(bigText));
+        app.replaceChildren(el('div', { class: 'state-msg' }, big, el('div', { text: subText })));
+        bar.style.display = 'none';
+      }
+
+      async function loadAndRender(id) {
+        try {
+          const r = await fetch('/api/round?session=' + encodeURIComponent(id), { cache: 'no-store' }).then((x) => x.json());
+          if (r && r.roundId) renderRound(r);
+        } catch (e) { /* transient */ }
+      }
+
+      async function submit(useRecommended) {
+        if (!round || !active) return;
+        if (useRecommended) {
+          (round.questions || []).forEach((q) => {
+            document.querySelectorAll('input[name="' + q.id + '"]').forEach((i) => {
+              const opt = (q.options || []).find((o) => o.label === i.value);
+              i.checked = !!(opt && opt.recommended);
+            });
+            syncSel(q.id);
+          });
+        }
+        const payload = { sessionId: active, roundId: round.roundId, answers: collect() };
+        $('submit').disabled = true; $('acceptRec').disabled = true;
+        try {
+          await fetch('/api/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+          messageState('Answers sent', 'Looking for the next grilling…', true);
+          active = null; round = null; renderedRoundId = null;   // let the poll advance to the next pending session
+          pollSessions();
+        } catch (e) {
+          $('submit').disabled = false; $('acceptRec').disabled = false;
+          alert('Failed to send: ' + e);
+        }
+      }
+      $('submit').addEventListener('click', () => submit(false));
+      $('acceptRec').addEventListener('click', () => submit(true));
+
+      function setConn(live) {
+        $('dot').classList.toggle('live', live);
+        $('conn').textContent = live ? 'connected' : 'disconnected';
+      }
+
+      async function pollSessions() {
+        let data;
+        try { data = await fetch('/api/sessions', { cache: 'no-store' }).then((x) => x.json()); setConn(true); }
+        catch (e) { setConn(false); return; }
+        sessions = data.sessions || [];
+        renderSidebar();
+
+        const activeRow = sessions.find((s) => s.sessionId === active);
+        if (!active || !activeRow) {
+          // Auto-pick the first pending session; if none, show the caught-up state.
+          const pending = sessions.filter((s) => !s.answered);
+          active = pending.length ? pending[0].sessionId : null;
+          renderedRoundId = null;
+          renderSidebar();
+        }
+        if (!active) {
+          messageState('All caught up', sessions.length ? 'No grillings waiting for you.' : 'No grillings posted yet.', false);
+          return;
+        }
+        const row = sessions.find((s) => s.sessionId === active);
+        if (row && row.roundId !== renderedRoundId) await loadAndRender(active);
+      }
+      pollSessions();
+      setInterval(pollSessions, 1000);
+    </script>
+  </body>
+</html>
