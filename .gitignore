@@ -3,7 +3,12 @@ dist/
 build/
 coverage/
 .direnv/
+.devenv/
+.devenv.flake.nix
+devenv.local.nix
+.pre-commit-config.yaml
 .grill-state/
 .state/
 *.log
 .DS_Store
+.grill/

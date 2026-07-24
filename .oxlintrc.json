@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [
+    ".devenv/",
+    ".direnv/",
+    "dist/",
+    "build/",
+    "coverage/",
+    "node_modules/",
+    "prototype/"
+  ],
+  "plugins": ["typescript", "oxc", "import"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "typescript/no-floating-promises": "warn",
+    "typescript/no-misused-promises": "warn",
+    "typescript/await-thenable": "warn",
+    "typescript/no-for-in-array": "error"
+  }
+}
