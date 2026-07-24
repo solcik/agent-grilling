@@ -1,9 +1,17 @@
-import { Option } from 'effect'
+import { Option, Result } from 'effect'
 import { Scene } from 'foldkit'
 import { describe, expect, test } from 'vitest'
 
 import type { Inbox, Round } from '../domain/contract.js'
-import { FetchRound, GotRound, type Model, update, view } from './main.js'
+import {
+  FetchRound,
+  InboxData,
+  RoundData,
+  SettledFetchRound,
+  type Model,
+  update,
+  view,
+} from './main.js'
 
 const firstSessionId = 'acme/first'
 const secondSessionId = 'acme/second'
@@ -52,14 +60,13 @@ const twoSessionInbox: Inbox = {
 }
 
 const modelShowingFirstRound: Model = {
-  inbox: twoSessionInbox,
+  inbox: InboxData.Success({ data: twoSessionInbox }),
   activeSessionId: Option.some(firstSessionId),
-  round: Option.some(firstRound),
+  round: RoundData.Success({ data: firstRound }),
   answers: {
     'first-question': { selected: [], other: '', notes: '' },
   },
   isLight: false,
-  status: 'Connected',
 }
 
 describe('view interactions', () => {
@@ -79,7 +86,10 @@ describe('view interactions', () => {
       Scene.Command.expectExact(fetchSecondRound),
       Scene.Command.resolve(
         fetchSecondRound,
-        GotRound({ sessionId: secondSessionId, round: secondRound }),
+        SettledFetchRound({
+          sessionId: secondSessionId,
+          result: Result.succeed(secondRound),
+        }),
       ),
       Scene.expect(Scene.text('Second round title')).toExist(),
       Scene.expect(Scene.text('A question unique to the second round')).toExist(),
@@ -102,6 +112,32 @@ describe('view interactions', () => {
         }
         expect(sessionRowKeys).toStrictEqual([firstSessionId, secondSessionId])
       }),
+    )
+  })
+
+  test('a failed round renders its error and retries the active session', () => {
+    const error = 'Could not load this round.'
+    const fetchFirstRound = FetchRound({ sessionId: firstSessionId })
+    const failedModel: Model = {
+      ...modelShowingFirstRound,
+      round: RoundData.Failure({ error }),
+    }
+
+    Scene.scene(
+      { update, view },
+      Scene.with(failedModel),
+      Scene.expect(Scene.text(error)).toExist(),
+      Scene.click(Scene.role('button', { name: 'Retry' })),
+      Scene.expect(Scene.text('Loading round…')).toExist(),
+      Scene.Command.expectExact(fetchFirstRound),
+      Scene.Command.resolve(
+        fetchFirstRound,
+        SettledFetchRound({
+          sessionId: firstSessionId,
+          result: Result.succeed(firstRound),
+        }),
+      ),
+      Scene.expect(Scene.text('First round title')).toExist(),
     )
   })
 })

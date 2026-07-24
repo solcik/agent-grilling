@@ -1,5 +1,6 @@
-import { Effect, Match as M, Option, Schema as S } from 'effect'
-import { Command, Runtime } from 'foldkit'
+import { Effect, Match as M, Option, Result, Schema as S, pipe } from 'effect'
+import { HttpClient, HttpClientRequest, HttpClientResponse } from 'effect/unstable/http'
+import { AsyncData, Command, Http, Runtime } from 'foldkit'
 import { type Document, type Html, html } from 'foldkit/html'
 import { m } from 'foldkit/message'
 import { evo } from 'foldkit/struct'
@@ -12,40 +13,53 @@ const AnswerDraft = S.Struct({
   notes: S.String,
 })
 
+export const InboxData = AsyncData.Schema(Inbox, S.String)
+export const RoundData = AsyncData.Schema(Round, S.String)
+
+type InboxData = typeof InboxData.schema.Type
+type RoundData = typeof RoundData.schema.Type
+
 export const Model = S.Struct({
-  inbox: Inbox,
+  inbox: InboxData.schema,
   activeSessionId: S.Option(S.String),
-  round: S.Option(Round),
+  round: RoundData.schema,
   answers: S.Record(S.String, AnswerDraft),
   isLight: S.Boolean,
-  status: S.String,
 })
 export type Model = typeof Model.Type
 
-export const GotInbox = m('GotInbox', { inbox: Inbox })
-export const GotRound = m('GotRound', { sessionId: S.String, round: Round })
-export const FailedRequest = m('FailedRequest', { message: S.String })
+export const SettledFetchInbox = m('SettledFetchInbox', {
+  result: S.Result(Inbox, S.String),
+})
+export const SettledFetchRound = m('SettledFetchRound', {
+  sessionId: S.String,
+  result: S.Result(Round, S.String),
+})
+export const SettledSubmitAnswer = m('SettledSubmitAnswer', {
+  sessionId: S.String,
+  result: S.Result(Answer, S.String),
+})
 export const ClickedSession = m('ClickedSession', { sessionId: S.String })
+export const ClickedRetryRound = m('ClickedRetryRound')
 export const ClickedOption = m('ClickedOption', { questionId: S.String, label: S.String })
 export const UpdatedOther = m('UpdatedOther', { questionId: S.String, value: S.String })
 export const UpdatedNotes = m('UpdatedNotes', { questionId: S.String, value: S.String })
 export const ClickedAcceptRecommended = m('ClickedAcceptRecommended')
 export const ClickedSubmit = m('ClickedSubmit')
-export const SubmittedAnswer = m('SubmittedAnswer', { sessionId: S.String })
 export const ToggledTheme = m('ToggledTheme')
 export const PersistedTheme = m('PersistedTheme')
 
 export const Message = S.Union([
-  GotInbox,
-  GotRound,
-  FailedRequest,
+  SettledFetchInbox,
+  SettledFetchRound,
+  SettledSubmitAnswer,
   ClickedSession,
+  ClickedRetryRound,
   ClickedOption,
   UpdatedOther,
   UpdatedNotes,
   ClickedAcceptRecommended,
   ClickedSubmit,
-  SubmittedAnswer,
   ToggledTheme,
   PersistedTheme,
 ])
@@ -53,12 +67,11 @@ export type Message = typeof Message.Type
 
 export const init: Runtime.ApplicationInit<Model, Message> = () => [
   {
-    inbox: { sessions: [] },
+    inbox: InboxData.Loading(),
     activeSessionId: Option.none(),
-    round: Option.none(),
+    round: RoundData.Idle(),
     answers: {},
     isLight: readInitialTheme(),
-    status: 'Connecting…',
   },
   [FetchInbox()],
 ]
@@ -70,53 +83,85 @@ export const update = (
   M.value(message).pipe(
     M.withReturnType<readonly [Model, ReadonlyArray<Command.Command<Message>>]>(),
     M.tagsExhaustive({
-      GotInbox: ({ inbox }) => {
-        const maybeActive = Option.filter(model.activeSessionId, sessionId =>
-          inbox.sessions.some(row => row.sessionId === sessionId),
-        )
-        const nextSessionId = Option.orElse(maybeActive, () =>
-          Option.fromNullishOr(inbox.sessions.find(row => !row.answered)?.sessionId),
-        )
-        return Option.match(nextSessionId, {
-          onNone: () => [
+      SettledFetchInbox: ({ result }) =>
+        Result.match(result, {
+          onFailure: () => [evo(model, { inbox: AsyncData.settle(result) }), []],
+          onSuccess: inbox => {
+            const nextInbox = AsyncData.settle(model.inbox, result)
+            const maybeActive = Option.filter(model.activeSessionId, sessionId =>
+              inbox.sessions.some(row => row.sessionId === sessionId),
+            )
+
+            return Option.match(maybeActive, {
+              onSome: activeSessionId => [
+                evo(model, {
+                  inbox: () => nextInbox,
+                  activeSessionId: () => Option.some(activeSessionId),
+                }),
+                [],
+              ],
+              onNone: () => {
+                const nextSessionId = Option.fromNullishOr(
+                  inbox.sessions.find(row => !row.answered)?.sessionId,
+                )
+
+                return Option.match(nextSessionId, {
+                  onNone: () => [
+                    evo(model, {
+                      inbox: () => nextInbox,
+                      activeSessionId: () => Option.none(),
+                      round: () => RoundData.Idle(),
+                    }),
+                    [],
+                  ],
+                  onSome: sessionId => [
+                    evo(model, {
+                      inbox: () => nextInbox,
+                      activeSessionId: () => Option.some(sessionId),
+                      round: () => RoundData.Loading(),
+                    }),
+                    [FetchRound({ sessionId })],
+                  ],
+                })
+              },
+            })
+          },
+        }),
+      SettledFetchRound: ({ sessionId, result }) =>
+        Result.match(result, {
+          onFailure: () => [
             evo(model, {
-              inbox: () => inbox,
-              activeSessionId: () => nextSessionId,
-              round: () => Option.none(),
-              status: () => 'No sessions yet.',
+              activeSessionId: () => Option.some(sessionId),
+              round: AsyncData.settle(result),
             }),
             [],
           ],
-          onSome: sessionId => [
+          onSuccess: round => [
             evo(model, {
-              inbox: () => inbox,
-              activeSessionId: () => nextSessionId,
-              status: () => 'Connected',
+              activeSessionId: () => Option.some(sessionId),
+              round: AsyncData.settle(result),
+              answers: () => initialAnswers(round),
             }),
-            [FetchRound({ sessionId })],
+            [],
           ],
-        })
-      },
-      GotRound: ({ sessionId, round }) => [
-        evo(model, {
-          activeSessionId: () => Option.some(sessionId),
-          round: () => Option.some(round),
-          answers: () => initialAnswers(round),
-          status: () => 'Connected',
         }),
-        [],
-      ],
-      FailedRequest: ({ message: statusText }) => [evo(model, { status: () => statusText }), []],
       ClickedSession: ({ sessionId }) => [
         evo(model, {
           activeSessionId: () => Option.some(sessionId),
-          round: () => Option.none(),
-          status: () => 'Loading round…',
+          round: () => RoundData.Loading(),
         }),
         [FetchRound({ sessionId })],
       ],
+      ClickedRetryRound: () =>
+        Option.match(model.activeSessionId, {
+          onNone: () => [model, []],
+          onSome: sessionId => [
+            evo(model, { round: () => RoundData.Loading() }),
+            [FetchRound({ sessionId })],
+          ],
+        }),
       ClickedOption: ({ questionId, label }) => {
-        const maybeQuestion = Option.flatMap(model.round, round =>
+        const maybeQuestion = Option.flatMap(AsyncData.getData(model.round), round =>
           Option.fromNullishOr(round.questions.find(question => question.id === questionId)),
         )
         return Option.match(maybeQuestion, {
@@ -153,7 +198,7 @@ export const update = (
         [],
       ],
       ClickedAcceptRecommended: () =>
-        Option.match(model.round, {
+        Option.match(AsyncData.getData(model.round), {
           onNone: () => [model, []],
           onSome: round => [
             evo(model, { answers: () => recommendedAnswers(round, model.answers) }),
@@ -164,18 +209,29 @@ export const update = (
         Option.match(model.activeSessionId, {
           onNone: () => [model, []],
           onSome: sessionId =>
-            Option.match(model.round, {
+            Option.match(AsyncData.getData(model.round), {
               onNone: () => [model, []],
               onSome: round => [
-                evo(model, { status: () => 'Submitting…' }),
+                evo(model, {
+                  round: () => RoundData.Refreshing({ data: round }),
+                }),
                 [SubmitAnswer({ sessionId, round, answers: model.answers })],
               ],
             }),
         }),
-      SubmittedAnswer: ({ sessionId }) => [
-        evo(model, { status: () => 'Answer submitted.' }),
-        [FetchInbox(), FetchRound({ sessionId })],
-      ],
+      SettledSubmitAnswer: ({ sessionId, result }) =>
+        Result.match(result, {
+          onFailure: error => [
+            evo(model, {
+              round: AsyncData.settle<Round, string>(Result.fail(error)),
+            }),
+            [],
+          ],
+          onSuccess: () => [
+            evo(model, { round: () => RoundData.Loading() }),
+            [FetchInbox(), FetchRound({ sessionId })],
+          ],
+        }),
       ToggledTheme: () => {
         const isLight = !model.isLight
         return [evo(model, { isLight: () => isLight }), [SaveTheme({ isLight })]]
@@ -186,49 +242,57 @@ export const update = (
 
 export const FetchInbox = Command.define(
   'FetchInbox',
-  GotInbox,
-  FailedRequest,
+  SettledFetchInbox,
 )(
-  requestJson('/api/sessions', Inbox).pipe(
-    Effect.map(inbox => GotInbox({ inbox })),
-    Effect.orElseSucceed(() =>
-      FailedRequest({ message: 'Could not reach the local grill server.' }),
-    ),
+  pipe(
+    requestJson(HttpClientRequest.get('/api/sessions'), Inbox),
+    Effect.mapError(() => 'Could not reach the local grill server.'),
+    Effect.provide(Http.layer),
+    Effect.result,
+    Effect.map(result => SettledFetchInbox({ result })),
   ),
 )
 
 export const FetchRound = Command.define(
   'FetchRound',
   { sessionId: S.String },
-  GotRound,
-  FailedRequest,
+  SettledFetchRound,
 )(({ sessionId }) =>
-  requestJson(`/api/round?session=${encodeURIComponent(sessionId)}`, Round).pipe(
-    Effect.map(round => GotRound({ sessionId, round })),
-    Effect.orElseSucceed(() => FailedRequest({ message: 'Could not load this round.' })),
+  pipe(
+    requestJson(
+      HttpClientRequest.get('/api/round').pipe(HttpClientRequest.setUrlParam('session', sessionId)),
+      Round,
+    ),
+    Effect.mapError(() => 'Could not load this round.'),
+    Effect.provide(Http.layer),
+    Effect.result,
+    Effect.map(result => SettledFetchRound({ sessionId, result })),
   ),
 )
 
 export const SubmitAnswer = Command.define(
   'SubmitAnswer',
   { sessionId: S.String, round: Round, answers: S.Record(S.String, AnswerDraft) },
-  SubmittedAnswer,
-  FailedRequest,
-)(({ sessionId, round, answers }) => {
-  const answer = SchemaAnswer({ sessionId, roundId: round.roundId, answers })
-  return requestJson('/api/answer', Answer, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(answer),
-  }).pipe(
-    Effect.map(() => SubmittedAnswer({ sessionId })),
-    Effect.orElseSucceed(() =>
-      FailedRequest({
-        message: 'The server rejected the answer. Complete every question and try again.',
-      }),
-    ),
-  )
-})
+  SettledSubmitAnswer,
+)(({ sessionId, round, answers }) =>
+  pipe(
+    Effect.gen(function* () {
+      const answer = yield* S.decodeUnknownEffect(Answer)({
+        sessionId,
+        roundId: round.roundId,
+        answers,
+      })
+      const request = yield* HttpClientRequest.post('/api/answer').pipe(
+        HttpClientRequest.schemaBodyJson(Answer)(answer),
+      )
+      return yield* requestJson(request, Answer)
+    }),
+    Effect.mapError(() => 'The server rejected the answer. Complete every question and try again.'),
+    Effect.provide(Http.layer),
+    Effect.result,
+    Effect.map(result => SettledSubmitAnswer({ sessionId, result })),
+  ),
+)
 
 export const SaveTheme = Command.define(
   'SaveTheme',
@@ -254,7 +318,11 @@ export const view = (model: Model): Document => {
 
 const sidebarView = (model: Model): Html => {
   const h = html<Message>()
-  const pending = model.inbox.sessions.filter(session => !session.answered).length
+  const pending = Option.match(AsyncData.getData(model.inbox), {
+    onNone: () => 0,
+    onSome: inbox => inbox.sessions.filter(session => !session.answered).length,
+  })
+
   return h.aside(
     [h.Class('sidebar')],
     [
@@ -271,73 +339,107 @@ const sidebarView = (model: Model): Html => {
       ),
       h.nav(
         [h.Class('session-list'), h.AriaLabel('Sessions')],
-        model.inbox.sessions.length === 0
-          ? [h.p([h.Class('muted')], ['No sessions yet.'])]
-          : model.inbox.sessions.map(session =>
-              h.button(
-                [
-                  h.Key(session.sessionId),
-                  h.Class(`session-row ${isActive(model, session.sessionId) ? 'active' : ''}`),
-                  h.OnClick(ClickedSession({ sessionId: session.sessionId })),
-                ],
-                [
-                  h.span([h.Class('session-title')], [session.title]),
-                  h.span(
-                    [h.Class('session-meta')],
+        AsyncData.matchData(model.inbox, {
+          onEmpty: () => [
+            h.p(
+              [h.Class('muted')],
+              [AsyncData.isLoading(model.inbox) ? 'Loading sessions…' : 'No sessions yet.'],
+            ),
+          ],
+          onFailure: error => [h.p([h.Class('muted')], [error])],
+          onData: inbox =>
+            inbox.sessions.length === 0
+              ? [h.p([h.Class('muted')], ['No sessions yet.'])]
+              : inbox.sessions.map(session =>
+                  h.button(
                     [
-                      session.answered
-                        ? '✓ answered'
-                        : `${session.count} question${session.count === 1 ? '' : 's'}`,
+                      h.Key(session.sessionId),
+                      h.Class(`session-row ${isActive(model, session.sessionId) ? 'active' : ''}`),
+                      h.OnClick(ClickedSession({ sessionId: session.sessionId })),
+                    ],
+                    [
+                      h.span([h.Class('session-title')], [session.title]),
+                      h.span(
+                        [h.Class('session-meta')],
+                        [
+                          session.answered
+                            ? '✓ answered'
+                            : `${session.count} question${session.count === 1 ? '' : 's'}`,
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
-            ),
+                ),
+        }),
       ),
-      h.div([h.Class('connection')], [h.span([h.Class('connection-dot')], []), model.status]),
+      h.div(
+        [h.Class('connection')],
+        [h.span([h.Class('connection-dot')], []), connectionStatus(model)],
+      ),
     ],
   )
 }
 
 const roundView = (model: Model): Html => {
+  return AsyncData.matchDataSplitEmpty(model.round, {
+    onIdle: () => roundLoadingView('Waiting for a round'),
+    onLoading: () => roundLoadingView('Loading round…'),
+    onFailure: error => roundFailureView(error),
+    onData: round => roundFormView(model, round),
+  })
+}
+
+const roundLoadingView = (message: string): Html => {
   const h = html<Message>()
-  return Option.match(model.round, {
-    onNone: () =>
-      h.div([h.Class('empty-state')], [h.h1([], ['Waiting for a round']), h.p([], [model.status])]),
-    onSome: round =>
-      h.div(
-        [h.Class('round-wrap')],
+
+  return h.div([h.Class('empty-state')], [h.h1([], [message])])
+}
+
+const roundFailureView = (error: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [h.Class('empty-state')],
+    [
+      h.h1([], ['Could not load this round']),
+      h.p([], [error]),
+      h.button([h.Class('primary-action'), h.OnClick(ClickedRetryRound())], ['Retry']),
+    ],
+  )
+}
+
+const roundFormView = (model: Model, round: Round): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [h.Class('round-wrap')],
+    [
+      h.header(
+        [h.Class('round-header')],
         [
-          h.header(
-            [h.Class('round-header')],
-            [
-              h.h1([], [round.title ?? 'Agent question']),
-              Option.match(model.activeSessionId, {
-                onNone: () => h.empty,
-                onSome: sessionId => h.p([h.Class('session-tag')], [sessionId]),
-              }),
-              round.intro === undefined ? h.empty : h.p([h.Class('intro')], [round.intro]),
-              contextView(round.context ?? []),
-            ],
-          ),
-          ...round.questions.map(question => questionView(model, question)),
-          h.footer(
-            [h.Class('action-bar')],
-            [
-              h.p(
-                [h.Class('muted')],
-                ['Every required question must be answered before submission.'],
-              ),
-              h.button(
-                [h.Class('secondary-action'), h.OnClick(ClickedAcceptRecommended())],
-                ['✓ Accept all recommended'],
-              ),
-              h.button([h.Class('primary-action'), h.OnClick(ClickedSubmit())], ['Submit answers']),
-            ],
-          ),
+          h.h1([], [round.title ?? 'Agent question']),
+          Option.match(model.activeSessionId, {
+            onNone: () => h.empty,
+            onSome: sessionId => h.p([h.Class('session-tag')], [sessionId]),
+          }),
+          round.intro === undefined ? h.empty : h.p([h.Class('intro')], [round.intro]),
+          contextView(round.context ?? []),
         ],
       ),
-  })
+      ...round.questions.map(question => questionView(model, question)),
+      h.footer(
+        [h.Class('action-bar')],
+        [
+          h.p([h.Class('muted')], ['Every required question must be answered before submission.']),
+          h.button(
+            [h.Class('secondary-action'), h.OnClick(ClickedAcceptRecommended())],
+            ['✓ Accept all recommended'],
+          ),
+          h.button([h.Class('primary-action'), h.OnClick(ClickedSubmit())], ['Submit answers']),
+        ],
+      ),
+    ],
+  )
 }
 
 const questionView = (model: Model, question: Question): Html => {
@@ -566,19 +668,22 @@ const tableCells = (line: string): Array<string> =>
     .split('|')
     .map(cell => cell.trim())
 
-function requestJson<SchemaType extends S.ConstraintDecoder<unknown>>(
-  url: string,
+function requestJson<SchemaType extends S.Constraint>(
+  request: HttpClientRequest.HttpClientRequest,
   schema: SchemaType,
-  requestInit?: RequestInit,
-): Effect.Effect<SchemaType['Type'], unknown> {
-  return Effect.tryPromise(async () => {
-    const response = await fetch(url, requestInit)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    return response.json()
-  }).pipe(Effect.flatMap(S.decodeUnknownEffect(schema)))
-}
+): Effect.Effect<
+  SchemaType['Type'],
+  unknown,
+  HttpClient.HttpClient | SchemaType['DecodingServices']
+> {
+  return Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+    const response = yield* client.execute(request)
+    const successfulResponse = yield* HttpClientResponse.filterStatusOk(response)
 
-const SchemaAnswer = (input: unknown) => S.decodeUnknownSync(Answer)(input)
+    return yield* HttpClientResponse.schemaBodyJson(schema)(successfulResponse)
+  })
+}
 
 const initialAnswers = (round: Round) =>
   Object.fromEntries(
@@ -617,6 +722,29 @@ const updateDraft = (
 
 const isActive = (model: Model, sessionId: string): boolean =>
   Option.contains(model.activeSessionId, sessionId)
+
+const connectionStatus = (model: Model): string =>
+  AsyncData.match(model.inbox, {
+    onIdle: () => 'Connecting…',
+    onLoading: () => 'Connecting…',
+    onRefreshing: inbox => roundConnectionStatus(model, inbox),
+    onFailure: error => error,
+    onStale: ({ error }) => error,
+    onSuccess: inbox => roundConnectionStatus(model, inbox),
+  })
+
+const roundConnectionStatus = (model: Model, inbox: Inbox): string => {
+  if (inbox.sessions.length === 0) return 'No sessions yet.'
+
+  return AsyncData.match(model.round, {
+    onIdle: () => 'Waiting for a round.',
+    onLoading: () => 'Loading round…',
+    onRefreshing: () => 'Submitting…',
+    onFailure: error => error,
+    onStale: ({ error }) => error,
+    onSuccess: () => 'Connected',
+  })
+}
 
 const readInitialTheme = (): boolean => {
   try {
