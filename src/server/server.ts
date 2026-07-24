@@ -1,134 +1,130 @@
+import { extname } from 'node:path'
 import { Effect, Layer } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiError, HttpApiScalar } from 'effect/unstable/httpapi'
-import { readFile } from 'node:fs/promises'
-import { extname, join, normalize, relative } from 'node:path'
 
 import { GrillApi } from './api.js'
-import { MissingRoundError, StateRepository } from './repository.js'
+import { StateRepository, makeStateRepositoryLayer } from './repository.js'
+import { parseSessionId } from './session.js'
+import {
+  StaticFilesGateway,
+  UnsafeStaticPathError,
+  makeStaticFilesGatewayLayer,
+} from './staticFiles.js'
 
-export const makeApiLayer = (stateDirectory: string) => {
-  const repository = new StateRepository(stateDirectory)
-  const handlers = HttpApiBuilder.group(GrillApi, 'grill', builder =>
-    builder
+const badRequest = () => new HttpApiError.BadRequest({})
+const notFound = () => new HttpApiError.NotFound({})
+
+const handlers = HttpApiBuilder.group(GrillApi, 'grill', builder =>
+  Effect.gen(function* () {
+    const repository = yield* StateRepository
+
+    return builder
       .handle('health', () => Effect.succeed({ status: 'ok' as const }))
-      .handle('sessions', () => Effect.tryPromise(() => repository.getInbox()).pipe(Effect.orDie))
+      .handle('sessions', () =>
+        repository.getInbox.pipe(
+          Effect.catchTags({
+            PlatformError: error => Effect.die(error),
+            SchemaError: () => Effect.fail(badRequest()),
+          }),
+        ),
+      )
       .handle('round', ({ query }) =>
-        Effect.tryPromise(() => repository.getRound(query.session)).pipe(
-          Effect.orDie,
-          Effect.flatMap(round =>
-            round === undefined
-              ? Effect.fail(new HttpApiError.NotFound({}))
-              : Effect.succeed(round),
-          ),
+        Effect.gen(function* () {
+          const sessionId = yield* parseSessionId(query.session)
+          const round = yield* repository.getRound(sessionId)
+          return yield* Effect.fromOption(round, notFound)
+        }).pipe(
+          Effect.catchTags({
+            PlatformError: error => Effect.die(error),
+            SchemaError: () => Effect.fail(badRequest()),
+          }),
         ),
       )
       .handle('postRound', ({ payload }) =>
-        Effect.tryPromise(() => repository.postRound(payload.sessionId, payload.round)).pipe(
-          Effect.mapError(() => new HttpApiError.BadRequest({})),
-        ),
+        Effect.gen(function* () {
+          const sessionId = yield* parseSessionId(payload.sessionId)
+          return yield* repository.postRound(sessionId, payload.round)
+        }).pipe(Effect.mapError(() => badRequest())),
       )
       .handle('answer', ({ query }) =>
-        Effect.tryPromise(() => repository.getAnswer(query.session)).pipe(
-          Effect.orDie,
-          Effect.flatMap(answer =>
-            answer === undefined
-              ? Effect.fail(new HttpApiError.NotFound({}))
-              : Effect.succeed(answer),
-          ),
+        Effect.gen(function* () {
+          const sessionId = yield* parseSessionId(query.session)
+          const answer = yield* repository.getAnswer(sessionId)
+          return yield* Effect.fromOption(answer, notFound)
+        }).pipe(
+          Effect.catchTags({
+            PlatformError: error => Effect.die(error),
+            SchemaError: () => Effect.fail(badRequest()),
+          }),
         ),
       )
       .handle('postAnswer', ({ payload }) =>
-        Effect.tryPromise(() => repository.postAnswer(payload)).pipe(
-          Effect.mapError(error =>
-            error instanceof MissingRoundError
-              ? new HttpApiError.NotFound({})
-              : new HttpApiError.BadRequest({}),
-          ),
+        Effect.gen(function* () {
+          const sessionId = yield* parseSessionId(payload.sessionId)
+          return yield* repository.postAnswer({ ...payload, sessionId })
+        }).pipe(
+          Effect.catchTags({
+            InvalidAnswerError: () => Effect.fail(badRequest()),
+            MissingRoundError: () => Effect.fail(notFound()),
+            PlatformError: () => Effect.fail(badRequest()),
+            SchemaError: () => Effect.fail(badRequest()),
+          }),
         ),
       )
       .handle('reset', ({ payload }) =>
-        Effect.tryPromise(() => repository.reset(payload.sessionId)).pipe(
-          Effect.as({ reset: true }),
-          Effect.mapError(() => new HttpApiError.BadRequest({})),
-        ),
-      ),
-  )
+        Effect.gen(function* () {
+          const sessionId = yield* parseSessionId(payload.sessionId)
+          yield* repository.reset(sessionId)
+          return { reset: true }
+        }).pipe(Effect.mapError(() => badRequest())),
+      )
+  }),
+)
 
-  return HttpApiBuilder.layer(GrillApi, { openapiPath: '/openapi.json' }).pipe(
-    Layer.provide(handlers),
+export const makeApiLayer = (stateDirectory: string) =>
+  HttpApiBuilder.layer(GrillApi, { openapiPath: '/openapi.json' }).pipe(
+    Layer.provide(handlers.pipe(Layer.provide(makeStateRepositoryLayer(stateDirectory)))),
   )
-}
 
 export const makeApplicationLayer = (stateDirectory: string) =>
   Layer.mergeAll(
     makeApiLayer(stateDirectory),
     HttpApiScalar.layer(GrillApi, { path: '/docs' }),
-    staticRoutes,
+    staticRoutes.pipe(Layer.provide(makeStaticFilesGatewayLayer(staticRoot))),
   )
 
 const staticRoot = new URL('../ui/', import.meta.url)
 
 const staticRoutes = HttpRouter.use(router =>
-  router.add('GET', '/*', request => {
-    const pathname = request.url.split('?')[0] ?? '/'
-    const readResponse = (url: string) =>
-      Effect.tryPromise({
-        try: () => readStaticFile(url),
-        catch: error => error,
-      }).pipe(
-        Effect.map(({ contents, contentType }) =>
-          HttpServerResponse.text(contents, { contentType }),
+  Effect.gen(function* () {
+    const staticFiles = yield* StaticFilesGateway
+    yield* router.add('GET', '/*', request => {
+      const pathname = request.url.split('?')[0] ?? '/'
+      const readResponse = (url: string) =>
+        staticFiles
+          .read(url)
+          .pipe(
+            Effect.map(({ contents, contentType }) =>
+              HttpServerResponse.text(contents, { contentType }),
+            ),
+          )
+
+      return readResponse(request.url).pipe(
+        Effect.catchIf(
+          (error): error is UnsafeStaticPathError => error instanceof UnsafeStaticPathError,
+          error => Effect.fail(error),
+          () =>
+            extname(pathname) !== ''
+              ? Effect.succeed(HttpServerResponse.text('Not found', { status: 404 }))
+              : readResponse('/').pipe(
+                  Effect.orElseSucceed(() => HttpServerResponse.html(fallbackHtml)),
+                ),
         ),
       )
-
-    return readResponse(request.url).pipe(
-      Effect.catchIf(
-        (error): error is UnsafeStaticPathError => error instanceof UnsafeStaticPathError,
-        error => Effect.fail(error),
-        () =>
-          extname(pathname) !== ''
-            ? Effect.succeed(HttpServerResponse.text('Not found', { status: 404 }))
-            : readResponse('/').pipe(
-                Effect.orElseSucceed(() => HttpServerResponse.html(fallbackHtml)),
-              ),
-      ),
-    )
+    })
   }),
 )
-
-class UnsafeStaticPathError extends Error {
-  constructor() {
-    super('Unsafe static path.')
-  }
-}
-
-const readStaticFile = async (
-  url: string,
-): Promise<{ readonly contents: string; readonly contentType: string }> => {
-  const pathname = url.split('?')[0] ?? '/'
-  const requestedPath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '')
-  const safePath = normalize(requestedPath)
-  if (
-    safePath.startsWith('..') ||
-    relative(staticRoot.pathname, join(staticRoot.pathname, safePath)).startsWith('..')
-  ) {
-    throw new UnsafeStaticPathError()
-  }
-  const filePath = new URL(safePath, staticRoot).pathname
-  return {
-    contents: await readFile(filePath, 'utf8'),
-    contentType: contentTypeFor(extname(safePath)),
-  }
-}
-
-const contentTypeFor = (extension: string): string => {
-  if (extension === '.js') return 'text/javascript'
-  if (extension === '.css') return 'text/css'
-  if (extension === '.svg') return 'image/svg+xml'
-  if (extension === '.json') return 'application/json'
-  return 'text/html'
-}
 
 const fallbackHtml =
   '<!doctype html><html><body><p>grill UI has not been built yet. Run <code>npm run build</code>.</p></body></html>'
