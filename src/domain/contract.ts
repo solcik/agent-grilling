@@ -40,7 +40,7 @@ export const HtmlBlock = Schema.Struct({
   html: Schema.String,
 })
 
-export const ContextBlock = Schema.Union(MarkdownBlock, ImageBlock, HtmlBlock)
+export const ContextBlock = Schema.Union([MarkdownBlock, ImageBlock, HtmlBlock])
 export type ContextBlock = typeof ContextBlock.Type
 
 // ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ export const SessionRow = Schema.Struct({
   sessionId: Schema.String,
   roundId: Schema.String,
   title: Schema.String,
-  count: Schema.Number,
+  count: Schema.Finite,
   answered: Schema.Boolean,
 })
 export type SessionRow = typeof SessionRow.Type
