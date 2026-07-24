@@ -1,4 +1,4 @@
-import { Option } from 'effect'
+import { Option, Result } from 'effect'
 import { Story } from 'foldkit'
 import { describe, expect, test } from 'vitest'
 
@@ -7,8 +7,10 @@ import {
   ClickedOption,
   ClickedSession,
   FetchRound,
-  GotInbox,
-  GotRound,
+  InboxData,
+  RoundData,
+  SettledFetchInbox,
+  SettledFetchRound,
   type Model,
   update,
 } from './main.js'
@@ -66,46 +68,49 @@ const twoSessionInbox: Inbox = {
 }
 
 const emptyModel: Model = {
-  inbox: { sessions: [] },
+  inbox: InboxData.Loading(),
   activeSessionId: Option.none(),
-  round: Option.none(),
+  round: RoundData.Idle(),
   answers: {},
   isLight: false,
-  status: 'Connecting…',
 }
 
 const firstRoundModel: Model = {
-  inbox: twoSessionInbox,
+  inbox: InboxData.Success({ data: twoSessionInbox }),
   activeSessionId: Option.some(firstSessionId),
-  round: Option.some(firstRound),
+  round: RoundData.Success({ data: firstRound }),
   answers: {
     'single-choice': { selected: ['Alpha'], other: '', notes: '' },
     'multiple-choice': { selected: ['Red'], other: '', notes: '' },
   },
   isLight: false,
-  status: 'Connected',
 }
 
 describe('update', () => {
-  test('GotInbox auto-selects the first unanswered session and fetches its round', () => {
+  test('settled inbox auto-selects the first unanswered session and fetches its round', () => {
     const fetchFirstRound = FetchRound({ sessionId: firstSessionId })
 
     Story.story(
       update,
       Story.with(emptyModel),
-      Story.message(GotInbox({ inbox: twoSessionInbox })),
+      Story.message(SettledFetchInbox({ result: Result.succeed(twoSessionInbox) })),
       Story.model(model => {
         expect(model.activeSessionId).toStrictEqual(Option.some(firstSessionId))
+        expect(model.inbox).toStrictEqual(InboxData.Success({ data: twoSessionInbox }))
+        expect(model.round).toStrictEqual(RoundData.Loading())
       }),
       Story.Command.expectExact(fetchFirstRound),
       Story.Command.resolve(
         fetchFirstRound,
-        GotRound({ sessionId: firstSessionId, round: firstRound }),
+        SettledFetchRound({
+          sessionId: firstSessionId,
+          result: Result.succeed(firstRound),
+        }),
       ),
     )
   })
 
-  test('ClickedSession switches the active session, clears the round, and fetches the clicked session', () => {
+  test('ClickedSession switches the active session, loads the round, and fetches the clicked session', () => {
     const fetchSecondRound = FetchRound({ sessionId: secondSessionId })
 
     Story.story(
@@ -114,25 +119,32 @@ describe('update', () => {
       Story.message(ClickedSession({ sessionId: secondSessionId })),
       Story.model(model => {
         expect(model.activeSessionId).toStrictEqual(Option.some(secondSessionId))
-        expect(model.round).toStrictEqual(Option.none())
-        expect(model.status).toBe('Loading round…')
+        expect(model.round).toStrictEqual(RoundData.Loading())
       }),
       Story.Command.expectExact(fetchSecondRound),
       Story.Command.resolve(
         fetchSecondRound,
-        GotRound({ sessionId: secondSessionId, round: secondRound }),
+        SettledFetchRound({
+          sessionId: secondSessionId,
+          result: Result.succeed(secondRound),
+        }),
       ),
     )
   })
 
-  test('GotRound displays the arriving round and makes its session active', () => {
+  test('settled round displays its data and makes its session active', () => {
     Story.story(
       update,
       Story.with(emptyModel),
-      Story.message(GotRound({ sessionId: secondSessionId, round: secondRound })),
+      Story.message(
+        SettledFetchRound({
+          sessionId: secondSessionId,
+          result: Result.succeed(secondRound),
+        }),
+      ),
       Story.model(model => {
         expect(model.activeSessionId).toStrictEqual(Option.some(secondSessionId))
-        expect(model.round).toStrictEqual(Option.some(secondRound))
+        expect(model.round).toStrictEqual(RoundData.Success({ data: secondRound }))
       }),
       Story.Command.expectNone(),
     )
