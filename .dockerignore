@@ -1,0 +1,17 @@
+node_modules
+dist
+build
+coverage
+.git
+.gitignore
+.devenv
+.devenv.flake.nix
+.direnv
+.grill-state
+.state
+*.log
+prototype
+.github
+.vscode
+Dockerfile
+.dockerignore
