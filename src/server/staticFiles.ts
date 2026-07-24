@@ -1,5 +1,5 @@
 import { extname, isAbsolute, normalize, relative, resolve } from 'node:path'
-import { Context, Effect, FileSystem, Layer, PlatformError, Schema } from 'effect'
+import { Context, Effect, FileSystem, Layer, Match as M, PlatformError, Schema } from 'effect'
 
 export interface StaticFile {
   readonly contents: string
@@ -61,10 +61,11 @@ export class UnsafeStaticPathError extends Schema.TaggedErrorClass<UnsafeStaticP
   }
 }
 
-const contentTypeFor = (extension: string): string => {
-  if (extension === '.js') return 'text/javascript'
-  if (extension === '.css') return 'text/css'
-  if (extension === '.svg') return 'image/svg+xml'
-  if (extension === '.json') return 'application/json'
-  return 'text/html'
-}
+const contentTypeFor = (extension: string): string =>
+  M.value(extension).pipe(
+    M.when('.js', () => 'text/javascript'),
+    M.when('.css', () => 'text/css'),
+    M.when('.svg', () => 'image/svg+xml'),
+    M.when('.json', () => 'application/json'),
+    M.orElse(() => 'text/html'),
+  )

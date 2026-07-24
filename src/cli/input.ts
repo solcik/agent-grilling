@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { basename, extname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
-import { Effect, FileSystem, Schema } from 'effect'
+import { Effect, FileSystem, Match as M, Schema } from 'effect'
 
 import { Round } from '../domain/contract.js'
 
@@ -62,6 +62,11 @@ export const parseDurationMilliseconds = (input: string): number => {
   }
   const amount = Number(match[1])
   const unit = match[2]
-  const multiplier = unit === 'ms' ? 1 : unit === 's' ? 1_000 : unit === 'm' ? 60_000 : 3_600_000
+  const multiplier = M.value(unit).pipe(
+    M.when('ms', () => 1),
+    M.when('s', () => 1_000),
+    M.when('m', () => 60_000),
+    M.orElse(() => 3_600_000),
+  )
   return amount * multiplier
 }
