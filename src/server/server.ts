@@ -9,8 +9,8 @@ import { MissingRoundError, StateRepository } from './repository.js'
 
 export const makeApiLayer = (stateDirectory: string) => {
   const repository = new StateRepository(stateDirectory)
-  const handlers = HttpApiBuilder.group(GrillApi, 'grill', handlers =>
-    handlers
+  const handlers = HttpApiBuilder.group(GrillApi, 'grill', builder =>
+    builder
       .handle('health', () => Effect.succeed({ status: 'ok' as const }))
       .handle('sessions', () => Effect.tryPromise(() => repository.getInbox()).pipe(Effect.orDie))
       .handle('round', ({ query }) =>

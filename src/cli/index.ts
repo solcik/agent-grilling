@@ -23,7 +23,7 @@ const sessionTask = Flag.string('session').pipe(
   Flag.withDefault('default'),
 )
 
-const timeout = Flag.string('timeout').pipe(
+const timeoutFlag = Flag.string('timeout').pipe(
   Flag.withDescription('How long to wait, for example 30m or 15s.'),
   Flag.withDefault('30m'),
 )
@@ -77,7 +77,7 @@ const ask = Command.make(
     option: Flag.between(Flag.string('option'), 0, 100).pipe(
       Flag.withDescription('Option for a simple round. Repeat the flag for each option.'),
     ),
-    timeout,
+    timeout: timeoutFlag,
     url: serverUrl,
   },
   Effect.fn(function* ({ round: roundPath, session, title, question, option, timeout, url }) {
@@ -127,7 +127,7 @@ const awaitAnswer = Command.make(
       Argument.withDescription('Full project/task session id from a timeout ticket.'),
     ),
     roundId: Argument.string('roundId').pipe(Argument.optional),
-    timeout,
+    timeout: timeoutFlag,
     url: serverUrl,
   },
   Effect.fn(function* ({ session, roundId, timeout, url }) {

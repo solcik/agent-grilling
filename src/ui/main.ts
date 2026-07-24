@@ -106,7 +106,7 @@ export const update = (
         }),
         [],
       ],
-      FailedRequest: ({ message }) => [evo(model, { status: () => message }), []],
+      FailedRequest: ({ message: statusText }) => [evo(model, { status: () => statusText }), []],
       ClickedSession: ({ sessionId }) => [
         evo(model, {
           activeSessionId: () => Option.some(sessionId),
@@ -565,10 +565,10 @@ const tableCells = (line: string): Array<string> =>
 function requestJson<SchemaType extends S.ConstraintDecoder<unknown, never>>(
   url: string,
   schema: SchemaType,
-  init?: RequestInit,
+  requestInit?: RequestInit,
 ): Effect.Effect<SchemaType['Type'], unknown, never> {
   return Effect.tryPromise(async () => {
-    const response = await fetch(url, init)
+    const response = await fetch(url, requestInit)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return response.json()
   }).pipe(Effect.flatMap(S.decodeUnknownEffect(schema)))
@@ -605,10 +605,10 @@ const recommendedLabels = (question: Question): Array<string> => {
 const updateDraft = (
   answers: Record<string, typeof AnswerDraft.Type>,
   questionId: string,
-  update: (draft: typeof AnswerDraft.Type) => typeof AnswerDraft.Type,
+  transform: (draft: typeof AnswerDraft.Type) => typeof AnswerDraft.Type,
 ) => ({
   ...answers,
-  [questionId]: update(answers[questionId] ?? { selected: [], other: '', notes: '' }),
+  [questionId]: transform(answers[questionId] ?? { selected: [], other: '', notes: '' }),
 })
 
 const isActive = (model: Model, sessionId: string): boolean =>
