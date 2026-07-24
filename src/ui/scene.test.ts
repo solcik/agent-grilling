@@ -3,15 +3,11 @@ import { Scene } from 'foldkit'
 import { describe, expect, test } from 'vitest'
 
 import type { Inbox, Round } from '../domain/contract.js'
-import {
-  FetchRound,
-  InboxData,
-  RoundData,
-  SettledFetchRound,
-  type Model,
-  update,
-  view,
-} from './main.js'
+import { FetchRound } from './command.js'
+import { SettledFetchRound } from './message.js'
+import { InboxData, type Model, RoundData } from './model.js'
+import { update } from './update.js'
+import { view } from './view.js'
 
 const firstSessionId = 'acme/first'
 const secondSessionId = 'acme/second'

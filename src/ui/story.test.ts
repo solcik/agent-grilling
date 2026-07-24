@@ -1,19 +1,12 @@
 import { Option, Result } from 'effect'
 import { Story } from 'foldkit'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import type { Inbox, Round } from '../domain/contract.js'
-import {
-  ClickedOption,
-  ClickedSession,
-  FetchRound,
-  InboxData,
-  RoundData,
-  SettledFetchInbox,
-  SettledFetchRound,
-  type Model,
-  update,
-} from './main.js'
+import { FetchRound } from './command.js'
+import { ClickedOption, ClickedSession, SettledFetchInbox, SettledFetchRound } from './message.js'
+import { InboxData, type Model, RoundData } from './model.js'
+import { init, update } from './update.js'
 
 const firstSessionId = 'acme/first'
 const secondSessionId = 'acme/second'
@@ -85,6 +78,21 @@ const firstRoundModel: Model = {
   },
   isLight: false,
 }
+
+describe('init', () => {
+  test('uses theme flags without reading localStorage', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem')
+
+    try {
+      const [model] = init({ isLight: true })
+
+      expect(model.isLight).toBe(true)
+      expect(getItem).not.toHaveBeenCalled()
+    } finally {
+      getItem.mockRestore()
+    }
+  })
+})
 
 describe('update', () => {
   test('settled inbox auto-selects the first unanswered session and fetches its round', () => {

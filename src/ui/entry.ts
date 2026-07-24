@@ -1,6 +1,20 @@
+import { Effect } from 'effect'
 import { Runtime } from 'foldkit'
 
-import { Message, Model, init, update, view } from './main.js'
+import { Message } from './message.js'
+import { Flags, Model } from './model.js'
+import { init, update } from './update.js'
+import { view } from './view.js'
+
+const readInitialTheme = (): boolean => {
+  try {
+    return localStorage.getItem('grill-theme') === 'light'
+  } catch {
+    return false
+  }
+}
+
+const flags: Effect.Effect<Flags> = Effect.sync(() => Flags.make({ isLight: readInitialTheme() }))
 
 // @foldkit/devtools (time-travel + message inspector) is loaded only in development.
 // `import.meta.env.DEV` is statically false in a production build, so vite dead-code-
@@ -11,6 +25,8 @@ const devTools = import.meta.env.DEV
 
 const application = Runtime.makeApplication({
   Model,
+  Flags,
+  flags,
   init,
   update,
   view,
