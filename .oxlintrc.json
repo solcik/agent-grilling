@@ -2,6 +2,7 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "ignorePatterns": [".devenv/", ".direnv/", "dist/", "build/", "coverage/", "node_modules/"],
   "plugins": ["typescript", "oxc", "import"],
+  "jsPlugins": [{ "name": "foldkit", "specifier": "@foldkit/oxlint-plugin" }],
   "categories": {
     "correctness": "error",
     "suspicious": "warn"
@@ -13,6 +14,14 @@
     "typescript/no-floating-promises": "warn",
     "typescript/no-misused-promises": "warn",
     "typescript/await-thenable": "warn",
-    "typescript/no-for-in-array": "error"
+    "typescript/no-for-in-array": "error",
+    "foldkit/no-noop-message": "error",
+    "foldkit/got-submodel-message-name": "error",
+    "foldkit/message-binding-matches-tag": "error",
+    "foldkit/got-prefix-requires-submodel-payload": "error",
+    "foldkit/no-empty-object-tagged-call": "error",
+    "foldkit/prefer-callable-message-constructor": "error",
+    "foldkit/command-binding-matches-name": "error",
+    "foldkit/no-module-level-mutable-state": "error"
   }
 }

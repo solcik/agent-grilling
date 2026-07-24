@@ -19,6 +19,7 @@
         "@effect/language-service": "^0.87.1",
         "@effect/tsgo": "0.24.2",
         "@effect/vitest": "4.0.0-beta.97",
+        "@foldkit/oxlint-plugin": "0.4.0",
         "@foldkit/vite-plugin": "0.11.0",
         "@types/node": "^24.0.0",
         "happy-dom": "^20.10.4",
@@ -73,6 +74,8 @@
     "@foldkit/devtools": ["@foldkit/devtools@0.131.0", "", { "dependencies": { "clsx": "^2.1.1" }, "peerDependencies": { "@effect/platform-browser": "4.0.0-beta.97", "@foldkit/ui": "^0", "effect": "4.0.0-beta.97", "foldkit": "^0" } }, "sha512-CtnEfb2CjT81JfCcCFgibjZzGq2gf+3+utKk8opEPJI+ag6gyR9+Jji5Bi9lrWDjeuzXQ5iegw13NH3yzGZDBQ=="],
 
     "@foldkit/markdown": ["@foldkit/markdown@0.1.1", "", { "dependencies": { "remark-directive": "^4.0.0", "remark-frontmatter": "^5.0.0", "remark-gfm": "^4.0.1", "remark-parse": "^11.0.0", "unified": "^11.0.5" }, "peerDependencies": { "effect": "4.0.0-beta.97", "foldkit": "^0", "vite": "^7.0.0 || ^8.0.0" } }, "sha512-3IVy4hTlT8zXbRdqcDll63N9+Bmblvq5c5xQLQ9CPEvIbrMR9H8epXg1zjMU97bZjK0RHQZMA+0R1l1oiXrnoQ=="],
+
+    "@foldkit/oxlint-plugin": ["@foldkit/oxlint-plugin@0.4.0", "", { "dependencies": { "effect-oxlint": "^0.3.2" } }, "sha512-96PTB1ADO3ajeQkhb1N2v21AFtNHcGcEdtJeiM1iKuo859uAgrxa/WJO64rG5DD46r6u2kgwLYHFPYdMgdW/OA=="],
 
     "@foldkit/ui": ["@foldkit/ui@0.131.0", "", { "dependencies": { "@floating-ui/dom": "^1.7.6" }, "peerDependencies": { "effect": "4.0.0-beta.97", "foldkit": "^0" } }, "sha512-zm09ywdY66AF8RFvXv6ovXN+9Vls3sA48YyNXxlOWRoPoTaaxBgBy8CFIv0PWAP3Zzc9fYq+UN4fa92U6qhx1w=="],
 
@@ -193,6 +196,8 @@
     "@oxlint/binding-win32-ia32-msvc": ["@oxlint/binding-win32-ia32-msvc@1.75.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-QVit2nOEOiPhkmsrksPSkoGCdnZRNkspt8fwoYyP09te1VEbnSj4LAxua4rc8FKTmWkySVe05j8iz9GXYfF1AQ=="],
 
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.75.0", "", { "os": "win32", "cpu": "x64" }, "sha512-DSxnNkBUAYARPwJtR12Ig3deWr8w0H997xP6jy33i+e0SyYJw8FKuz4+cZtpmPEhQmvlPJE3X/2vNxDmLkd/rA=="],
+
+    "@oxlint/plugins": ["@oxlint/plugins@1.75.0", "", {}, "sha512-dNQBRuvkeecm9nxi1cXRxXA1oAyqJqHof6cdnjY/WDBU1nZ9V07rp9X9gG7+JgShrjJW4VR2dTo7t2EcX4XD8g=="],
 
     "@rolldown/binding-android-arm64": ["@rolldown/binding-android-arm64@1.1.5", "", { "os": "android", "cpu": "arm64" }, "sha512-lZg8fqIv2v7FF237bwMgzGZEJvGL79/s5knJ/i6FmsGF4XXlzccZ4jb+TrFIxtSSxFtIpdsgrPZeMk1I9AFcyQ=="],
 
@@ -371,6 +376,8 @@
     "devlop": ["devlop@1.1.0", "", { "dependencies": { "dequal": "^2.0.0" } }, "sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA=="],
 
     "effect": ["effect@4.0.0-beta.97", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.9.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.4", "multipasta": "^0.2.8", "toml": "^4.1.2", "uuid": "^14.0.1", "yaml": "^2.9.0" } }, "sha512-pK03HpQVxGZOWdwDAy/iwvV8u3KYcUf2mOWyWqaut2zau8V2u6ejWP7b4BELjyUIiZWW1fl/s/VJpgZUcTjThg=="],
+
+    "effect-oxlint": ["effect-oxlint@0.3.3", "", { "dependencies": { "@oxlint/plugins": "^1.66.0" }, "peerDependencies": { "effect": "^4.0.0-beta.100" } }, "sha512-J1+0nr0S4mOkPq54Lj2jNpq2iu9UKB+ChhxfT9HANKHKiQaOqjycZqaq8iiZHRGqT36Ir+Lv02LoVLsuA+NfGA=="],
 
     "enhanced-resolve": ["enhanced-resolve@5.24.3", "", { "dependencies": { "graceful-fs": "^4.2.4", "tapable": "^2.3.3" } }, "sha512-PwKooW9JUzh5chmYfHM3IQl5OkK2u2Nm011MgeZrss3JmFraUx/fqrf78kk8GUMYoibx/14MdwTl/1WKkG7TpQ=="],
 
