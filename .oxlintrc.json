@@ -1,14 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": [
-    ".devenv/",
-    ".direnv/",
-    "dist/",
-    "build/",
-    "coverage/",
-    "node_modules/",
-    "prototype/"
-  ],
+  "ignorePatterns": [".devenv/", ".direnv/", "dist/", "build/", "coverage/", "node_modules/"],
   "plugins": ["typescript", "oxc", "import"],
   "categories": {
     "correctness": "error",

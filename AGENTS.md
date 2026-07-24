@@ -46,10 +46,6 @@ Pinned references (read these — they are ground truth at the revision in use):
 - Foldkit framework, examples, markdown, vite-plugin: `~/dev/ref/github/foldkit/foldkit/main`
   (see `examples/form`, `examples/todo`, `packages/markdown`, `packages/typing-game/server`
   for an Effect HttpApi server in the same ecosystem).
-- **The working UX prototype to port** (zero-dep Node, proves the inbox, dark-by-default,
-  options-with-recommended, Accept-all-recommended, per-session isolation): `prototype/` in
-  this repo (`node prototype/serve.mjs`) — reproduce its look and behavior in Foldkit; do not
-  ship its Node server.
 
 ## Development
 
@@ -149,7 +145,7 @@ bin/grill              # CLI entry
 3. `grill ask` + `grill serve` CLI; then `await` / `sessions` / `reset`.
 4. Foldkit UI: the inbox (sidebar of pending sessions) + a round view (options, recommended
    pre-selected, Accept-all-recommended, Other/Notes), dark-by-default with a light toggle —
-   ported from the prototype.
+   a dark, click-through inbox.
 5. Rich content (markdown/image/html + per-option preview) and attachments upload.
 6. Tests (Vitest): contract round-trips, server handlers, CLI.
 

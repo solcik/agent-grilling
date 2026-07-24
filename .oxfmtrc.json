@@ -6,5 +6,5 @@
   "printWidth": 100,
   "tabWidth": 2,
   "arrowParens": "avoid",
-  "ignorePatterns": ["prototype/", "dist/", "build/", ".devenv/", ".direnv/", "*.md"]
+  "ignorePatterns": ["dist/", "build/", ".devenv/", ".direnv/", "*.md"]
 }
