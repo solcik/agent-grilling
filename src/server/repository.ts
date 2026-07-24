@@ -110,7 +110,7 @@ export class StateRepository {
     }
   }
 
-  private async readJson<SchemaType extends Schema.ConstraintCodec<unknown, unknown, never, never>>(
+  private async readJson<SchemaType extends Schema.ConstraintCodec<unknown>>(
     path: string,
     schema: SchemaType,
   ): Promise<SchemaType['Type'] | undefined> {
@@ -125,9 +125,11 @@ export class StateRepository {
     }
   }
 
-  private async writeJson<
-    SchemaType extends Schema.ConstraintCodec<unknown, unknown, never, never>,
-  >(path: string, schema: SchemaType, value: SchemaType['Type']): Promise<void> {
+  private async writeJson<SchemaType extends Schema.ConstraintCodec<unknown>>(
+    path: string,
+    schema: SchemaType,
+    value: SchemaType['Type'],
+  ): Promise<void> {
     const directory = join(path, '..')
     await mkdir(directory, { recursive: true })
     const temporaryPath = join(directory, `.${basename(path)}.${randomUUID()}.tmp`)

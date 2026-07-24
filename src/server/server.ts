@@ -70,13 +70,38 @@ export const makeApplicationLayer = (stateDirectory: string) =>
 const staticRoot = new URL('../ui/', import.meta.url)
 
 const staticRoutes = HttpRouter.use(router =>
-  router.add('GET', '/*', request =>
-    Effect.tryPromise(() => readStaticFile(request.url)).pipe(
-      Effect.map(({ contents, contentType }) => HttpServerResponse.text(contents, { contentType })),
-      Effect.orElseSucceed(() => HttpServerResponse.html(fallbackHtml)),
-    ),
-  ),
+  router.add('GET', '/*', request => {
+    const pathname = request.url.split('?')[0] ?? '/'
+    const readResponse = (url: string) =>
+      Effect.tryPromise({
+        try: () => readStaticFile(url),
+        catch: error => error,
+      }).pipe(
+        Effect.map(({ contents, contentType }) =>
+          HttpServerResponse.text(contents, { contentType }),
+        ),
+      )
+
+    return readResponse(request.url).pipe(
+      Effect.catchIf(
+        (error): error is UnsafeStaticPathError => error instanceof UnsafeStaticPathError,
+        error => Effect.fail(error),
+        () =>
+          extname(pathname) !== ''
+            ? Effect.succeed(HttpServerResponse.text('Not found', { status: 404 }))
+            : readResponse('/').pipe(
+                Effect.orElseSucceed(() => HttpServerResponse.html(fallbackHtml)),
+              ),
+      ),
+    )
+  }),
 )
+
+class UnsafeStaticPathError extends Error {
+  constructor() {
+    super('Unsafe static path.')
+  }
+}
 
 const readStaticFile = async (
   url: string,
@@ -88,7 +113,7 @@ const readStaticFile = async (
     safePath.startsWith('..') ||
     relative(staticRoot.pathname, join(staticRoot.pathname, safePath)).startsWith('..')
   ) {
-    throw new Error('Unsafe static path.')
+    throw new UnsafeStaticPathError()
   }
   const filePath = new URL(safePath, staticRoot).pathname
   return {

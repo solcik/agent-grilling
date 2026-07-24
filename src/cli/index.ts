@@ -228,7 +228,7 @@ const waitForAnswer = (
   sessionId: string,
   roundId: string,
   timeoutMilliseconds: number,
-): Effect.Effect<Answer | undefined, unknown, never> => {
+): Effect.Effect<Answer | undefined, unknown> => {
   const deadline = Date.now() + timeoutMilliseconds
   const poll = (): Effect.Effect<Answer | undefined, unknown> =>
     client.grill.answer({ query: { session: sessionId } }).pipe(

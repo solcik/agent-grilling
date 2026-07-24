@@ -361,8 +361,9 @@ const questionView = (model: Model, question: Question): Html => {
               h.input([
                 h.Type(question.multiSelect === true ? 'checkbox' : 'radio'),
                 h.Name(question.id),
+                h.Value(option.label),
                 h.Checked(selected),
-                h.OnClick(ClickedOption({ questionId: question.id, label: option.label })),
+                h.OnChange(value => ClickedOption({ questionId: question.id, label: value })),
               ]),
               h.span(
                 [h.Class('option-copy')],
@@ -551,7 +552,10 @@ const inlineMarkdown = (source: string): ReadonlyArray<Html | string> => {
       const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token)
       return link === null
         ? token
-        : h.a([h.Href(link[2] ?? ''), h.Target('_blank'), h.Rel('noreferrer')], [link[1] ?? ''])
+        : h.a(
+            [h.Href(link[2] ?? ''), h.Target('_blank'), h.Rel('noopener noreferrer')],
+            [link[1] ?? ''],
+          )
     })
 }
 
@@ -562,11 +566,11 @@ const tableCells = (line: string): Array<string> =>
     .split('|')
     .map(cell => cell.trim())
 
-function requestJson<SchemaType extends S.ConstraintDecoder<unknown, never>>(
+function requestJson<SchemaType extends S.ConstraintDecoder<unknown>>(
   url: string,
   schema: SchemaType,
   requestInit?: RequestInit,
-): Effect.Effect<SchemaType['Type'], unknown, never> {
+): Effect.Effect<SchemaType['Type'], unknown> {
   return Effect.tryPromise(async () => {
     const response = await fetch(url, requestInit)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)

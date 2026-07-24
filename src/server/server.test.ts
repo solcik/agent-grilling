@@ -1,10 +1,11 @@
-import { Layer } from 'effect'
+import { Layer, Schema } from 'effect'
 import { HttpRouter, HttpServer } from 'effect/unstable/http'
 import { afterEach, expect, test } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { Inbox } from '../domain/contract.js'
 import { answer, richRound } from '../test-fixtures.js'
 import { makeApiLayer } from './server.js'
 
@@ -40,7 +41,7 @@ test('handlers persist and retrieve a round, inbox, answer, and health response'
 
   expect(health).toEqual({ status: 'ok' })
   expect(posted).toEqual(richRound)
-  expect((inbox as { sessions: Array<unknown> }).sessions).toEqual([
+  expect(Schema.decodeUnknownSync(Inbox)(inbox).sessions).toEqual([
     expect.objectContaining({ sessionId: answer.sessionId, answered: false }),
   ])
   expect(round).toEqual(richRound)

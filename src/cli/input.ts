@@ -38,8 +38,13 @@ export const readRoundFile = async (path: string) => {
 // A `.ts` round is loaded as a real ES module — Node 26 strips the types natively, so the
 // file can use `export default { ... }` (and even imports) rather than being string-eval'd.
 const importDefaultExport = async (absolute: string): Promise<unknown> => {
-  const module = (await import(pathToFileURL(absolute).href)) as { readonly default?: unknown }
-  if (module.default === undefined) {
+  const module: unknown = await import(pathToFileURL(absolute).href)
+  if (
+    typeof module !== 'object' ||
+    module === null ||
+    !('default' in module) ||
+    module.default === undefined
+  ) {
     throw new Error(`${absolute} must use an export default object.`)
   }
   return module.default
