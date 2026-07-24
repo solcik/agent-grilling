@@ -1,7 +1,8 @@
 import * as Markdown from '@foldkit/markdown'
+import { Checkbox, RadioGroup } from '@foldkit/ui'
 import { Option } from 'effect'
 import { AsyncData, Submodel } from 'foldkit'
-import { type Document, type Html, html } from 'foldkit/html'
+import { type Attribute, type Document, type Html, html } from 'foldkit/html'
 
 import { type ContextBlock, type Inbox, type Question, type Round } from '../domain/contract.js'
 import {
@@ -208,47 +209,7 @@ const questionView = (answers: AnswerFormModel, question: Question): Html => {
         : h.span([h.Class('question-header')], [question.header]),
       h.h2([], [question.question]),
       contextView(question.context ?? []),
-      h.div(
-        [h.Class('options')],
-        question.options.map(option => {
-          const selected = draft.selected.includes(option.label)
-          return h.label(
-            [h.Class(`option ${selected ? 'selected' : ''}`)],
-            [
-              h.input([
-                h.Type(question.multiSelect === true ? 'checkbox' : 'radio'),
-                h.Name(question.id),
-                h.Value(option.label),
-                h.Checked(selected),
-                h.OnChange(value =>
-                  ClickedOption({
-                    questionId: question.id,
-                    label: value,
-                  }),
-                ),
-              ]),
-              h.span(
-                [h.Class('option-copy')],
-                [
-                  h.span(
-                    [h.Class('option-label')],
-                    [
-                      option.label,
-                      option.recommended === true
-                        ? h.span([h.Class('recommended')], ['Recommended'])
-                        : h.empty,
-                    ],
-                  ),
-                  option.description === undefined
-                    ? h.empty
-                    : h.span([h.Class('option-description')], [option.description]),
-                  option.preview === undefined ? h.empty : contextView([option.preview]),
-                ],
-              ),
-            ],
-          )
-        }),
-      ),
+      answerOptionsView(question, draft.selected),
       question.allowOther === false
         ? h.empty
         : h.input([
@@ -273,6 +234,99 @@ const questionView = (answers: AnswerFormModel, question: Question): Html => {
               ),
             ],
           ),
+    ],
+  )
+}
+
+const answerOptionsView = (question: Question, selectedLabels: ReadonlyArray<string>): Html =>
+  question.multiSelect === true
+    ? checkboxOptionsView(question, selectedLabels)
+    : radioOptionsView(question, selectedLabels)
+
+const radioOptionsView = (question: Question, selectedLabels: ReadonlyArray<string>): Html => {
+  const h = html<AnswerFormMessage>()
+  const optionByLabel = new Map(question.options.map(option => [option.label, option]))
+
+  return RadioGroup.view<string, AnswerFormMessage>({
+    id: `radio-${question.id}`,
+    selectedValue: Option.fromNullishOr(selectedLabels[0]),
+    options: question.options.map(option => option.label),
+    ariaLabel: question.question,
+    onSelect: label => ClickedOption({ questionId: question.id, label }),
+    toView: ({ group, options }) =>
+      h.div(
+        [...group, h.Class('options')],
+        options.map(option => {
+          const answerOption = optionByLabel.get(option.value)
+
+          return answerOption === undefined
+            ? h.empty
+            : h.div(
+                [
+                  ...option.option,
+                  h.Key(option.value),
+                  h.Class(`option ${option.isSelected ? 'selected' : ''}`),
+                ],
+                [
+                  h.span([], [option.isSelected ? '◉' : '○']),
+                  optionCopyView(answerOption, option.label, option.description),
+                ],
+              )
+        }),
+      ),
+  })
+}
+
+const checkboxOptionsView = (question: Question, selectedLabels: ReadonlyArray<string>): Html => {
+  const h = html<AnswerFormMessage>()
+
+  return h.div(
+    [h.Class('options')],
+    question.options.map((option, index) => {
+      const selected = selectedLabels.includes(option.label)
+
+      return Checkbox.view<AnswerFormMessage>({
+        id: `checkbox-${question.id}-${index}`,
+        isChecked: selected,
+        onToggle: () =>
+          ClickedOption({
+            questionId: question.id,
+            label: option.label,
+          }),
+        toView: attributes =>
+          h.div(
+            [h.Key(option.label), h.Class(`option ${selected ? 'selected' : ''}`)],
+            [
+              h.span([...attributes.checkbox], [selected ? '☑' : '☐']),
+              optionCopyView(option, attributes.label, attributes.description),
+            ],
+          ),
+      })
+    }),
+  )
+}
+
+const optionCopyView = (
+  option: Question['options'][number],
+  labelAttributes: ReadonlyArray<Attribute<AnswerFormMessage>>,
+  descriptionAttributes: ReadonlyArray<Attribute<AnswerFormMessage>>,
+): Html => {
+  const h = html<AnswerFormMessage>()
+
+  return h.span(
+    [h.Class('option-copy')],
+    [
+      h.span(
+        [...labelAttributes, h.Class('option-label')],
+        [
+          option.label,
+          option.recommended === true ? h.span([h.Class('recommended')], ['Recommended']) : h.empty,
+        ],
+      ),
+      option.description === undefined
+        ? h.span([...descriptionAttributes], [])
+        : h.span([...descriptionAttributes, h.Class('option-description')], [option.description]),
+      option.preview === undefined ? h.empty : contextView([option.preview]),
     ],
   )
 }
