@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { afterEach, expect, test } from 'vitest'
+import { NodeServices } from '@effect/platform-node'
+import { Effect } from 'effect'
 
 import { richRoundInput } from '../test-fixtures.js'
 import { deriveProjectId, readRoundFile } from './input.js'
@@ -34,7 +36,8 @@ test('decodes a JSON round file through the shared contract', async () => {
   const roundPath = join(directory, 'round.json')
   await writeFile(roundPath, JSON.stringify(richRoundInput))
 
-  await expect(readRoundFile(roundPath)).resolves.toEqual(
-    expect.objectContaining({ roundId: 'round-rich' }),
+  const round = await Effect.runPromise(
+    readRoundFile(roundPath).pipe(Effect.provide(NodeServices.layer)),
   )
+  expect(round).toEqual(expect.objectContaining({ roundId: 'round-rich' }))
 })
