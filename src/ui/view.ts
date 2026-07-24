@@ -1,3 +1,4 @@
+import * as Markdown from '@foldkit/markdown'
 import { Option } from 'effect'
 import { AsyncData, Submodel } from 'foldkit'
 import { type Document, type Html, html } from 'foldkit/html'
@@ -15,7 +16,22 @@ import {
   UpdatedNotes,
   UpdatedOther,
 } from './message.js'
+import { parseMarkdown } from './markdown.js'
 import { type AnswerFormModel, type Model } from './model.js'
+
+const markdownHtml = html<Message>()
+const markdownViews: Markdown.Views = {
+  ...Markdown.defaultViews,
+  Link: (link, content) =>
+    markdownHtml.a(
+      [
+        markdownHtml.Href(link.url),
+        markdownHtml.Target('_blank'),
+        markdownHtml.Rel('noopener noreferrer'),
+      ],
+      content,
+    ),
+}
 
 export const view = (model: Model): Document => {
   const h = html<Message>()
@@ -288,129 +304,15 @@ const contextView = (blocks: ReadonlyArray<ContextBlock>): Html => {
           [],
         )
       }
-      return h.div([h.Key(`markdown-${index}`), h.Class('markdown')], [renderMarkdown(block.text)])
+      return h.div(
+        [h.Key(`markdown-${index}`), h.Class('markdown')],
+        Markdown.viewBlocks(parseMarkdown(block.text), {
+          views: markdownViews,
+        }),
+      )
     }),
   )
 }
-
-const renderMarkdown = (source: string): Html => {
-  const h = html<Message>()
-  const lines = source.replace(/\r/g, '').split('\n')
-  const blocks: Array<Html> = []
-  let index = 0
-  while (index < lines.length) {
-    const line = lines[index] ?? ''
-    if (line.trim() === '') {
-      index += 1
-    } else if (line.startsWith('```')) {
-      const code: Array<string> = []
-      index += 1
-      while (index < lines.length && !(lines[index] ?? '').startsWith('```')) {
-        code.push(lines[index] ?? '')
-        index += 1
-      }
-      index += 1
-      blocks.push(h.pre([], [h.code([], [code.join('\n')])]))
-    } else if (/^#{1,6}\s/.test(line)) {
-      const match = /^(#{1,6})\s+(.*)$/.exec(line)
-      const level = match?.[1]?.length ?? 1
-      const content = inlineMarkdown(match?.[2] ?? '')
-      blocks.push(
-        level === 1
-          ? h.h1([], content)
-          : level === 2
-            ? h.h2([], content)
-            : level === 3
-              ? h.h3([], content)
-              : h.h4([], content),
-      )
-      index += 1
-    } else if (/^\s*[-*+]\s+/.test(line)) {
-      const items: Array<Html> = []
-      while (index < lines.length && /^\s*[-*+]\s+/.test(lines[index] ?? '')) {
-        items.push(h.li([], inlineMarkdown((lines[index] ?? '').replace(/^\s*[-*+]\s+/, ''))))
-        index += 1
-      }
-      blocks.push(h.ul([], items))
-    } else if (/^\s*\d+\.\s+/.test(line)) {
-      const items: Array<Html> = []
-      while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index] ?? '')) {
-        items.push(h.li([], inlineMarkdown((lines[index] ?? '').replace(/^\s*\d+\.\s+/, ''))))
-        index += 1
-      }
-      blocks.push(h.ol([], items))
-    } else if (line.includes('|') && (lines[index + 1] ?? '').includes('|')) {
-      const headers = tableCells(line)
-      index += 2
-      const rows: Array<Html> = []
-      while (index < lines.length && (lines[index] ?? '').includes('|')) {
-        rows.push(
-          h.tr(
-            [],
-            tableCells(lines[index] ?? '').map(cell => h.td([], inlineMarkdown(cell))),
-          ),
-        )
-        index += 1
-      }
-      blocks.push(
-        h.table(
-          [],
-          [
-            h.thead(
-              [],
-              [
-                h.tr(
-                  [],
-                  headers.map(cell => h.th([], inlineMarkdown(cell))),
-                ),
-              ],
-            ),
-            h.tbody([], rows),
-          ],
-        ),
-      )
-    } else {
-      const paragraph: Array<string> = [line]
-      index += 1
-      while (
-        index < lines.length &&
-        (lines[index] ?? '').trim() !== '' &&
-        !/^#{1,6}\s|^\s*[-*+]\s+|^\s*\d+\.\s+|^```/.test(lines[index] ?? '')
-      ) {
-        paragraph.push(lines[index] ?? '')
-        index += 1
-      }
-      blocks.push(h.p([], inlineMarkdown(paragraph.join(' '))))
-    }
-  }
-  return h.div([], blocks)
-}
-
-const inlineMarkdown = (source: string): ReadonlyArray<Html | string> => {
-  const h = html<Message>()
-  const tokens = source.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g)
-  return tokens
-    .filter(token => token !== '')
-    .map(token => {
-      if (token.startsWith('`') && token.endsWith('`')) return h.code([], [token.slice(1, -1)])
-      if (token.startsWith('**') && token.endsWith('**')) return h.strong([], [token.slice(2, -2)])
-      if (token.startsWith('*') && token.endsWith('*')) return h.em([], [token.slice(1, -1)])
-      const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token)
-      return link === null
-        ? token
-        : h.a(
-            [h.Href(link[2] ?? ''), h.Target('_blank'), h.Rel('noopener noreferrer')],
-            [link[1] ?? ''],
-          )
-    })
-}
-
-const tableCells = (line: string): Array<string> =>
-  line
-    .trim()
-    .replace(/^\||\|$/g, '')
-    .split('|')
-    .map(cell => cell.trim())
 
 const isActive = (model: Model, sessionId: string): boolean =>
   Option.contains(model.activeSessionId, sessionId)
