@@ -1,0 +1,168 @@
+import { Option } from 'effect'
+import { Story } from 'foldkit'
+import { describe, expect, test } from 'vitest'
+
+import type { Inbox, Round } from '../domain/contract.js'
+import {
+  ClickedOption,
+  ClickedSession,
+  FetchRound,
+  GotInbox,
+  GotRound,
+  type Model,
+  update,
+} from './main.js'
+
+const firstSessionId = 'acme/first'
+const secondSessionId = 'acme/second'
+
+const firstRound: Round = {
+  roundId: 'round-first',
+  title: 'First round',
+  questions: [
+    {
+      id: 'single-choice',
+      question: 'Choose one',
+      options: [{ label: 'Alpha' }, { label: 'Beta' }],
+    },
+    {
+      id: 'multiple-choice',
+      question: 'Choose several',
+      multiSelect: true,
+      options: [{ label: 'Red' }, { label: 'Blue' }],
+    },
+  ],
+}
+
+const secondRound: Round = {
+  roundId: 'round-second',
+  title: 'Second round',
+  questions: [
+    {
+      id: 'second-question',
+      question: 'A question unique to the second round',
+      options: [{ label: 'Continue', recommended: true }],
+    },
+  ],
+}
+
+const twoSessionInbox: Inbox = {
+  sessions: [
+    {
+      sessionId: firstSessionId,
+      roundId: firstRound.roundId,
+      title: 'First session',
+      count: firstRound.questions.length,
+      answered: false,
+    },
+    {
+      sessionId: secondSessionId,
+      roundId: secondRound.roundId,
+      title: 'Second session',
+      count: secondRound.questions.length,
+      answered: false,
+    },
+  ],
+}
+
+const emptyModel: Model = {
+  inbox: { sessions: [] },
+  activeSessionId: Option.none(),
+  round: Option.none(),
+  answers: {},
+  isLight: false,
+  status: 'Connecting…',
+}
+
+const firstRoundModel: Model = {
+  inbox: twoSessionInbox,
+  activeSessionId: Option.some(firstSessionId),
+  round: Option.some(firstRound),
+  answers: {
+    'single-choice': { selected: ['Alpha'], other: '', notes: '' },
+    'multiple-choice': { selected: ['Red'], other: '', notes: '' },
+  },
+  isLight: false,
+  status: 'Connected',
+}
+
+describe('update', () => {
+  test('GotInbox auto-selects the first unanswered session and fetches its round', () => {
+    const fetchFirstRound = FetchRound({ sessionId: firstSessionId })
+
+    Story.story(
+      update,
+      Story.with(emptyModel),
+      Story.message(GotInbox({ inbox: twoSessionInbox })),
+      Story.model(model => {
+        expect(model.activeSessionId).toStrictEqual(Option.some(firstSessionId))
+      }),
+      Story.Command.expectExact(fetchFirstRound),
+      Story.Command.resolve(
+        fetchFirstRound,
+        GotRound({ sessionId: firstSessionId, round: firstRound }),
+      ),
+    )
+  })
+
+  test('ClickedSession switches the active session, clears the round, and fetches the clicked session', () => {
+    const fetchSecondRound = FetchRound({ sessionId: secondSessionId })
+
+    Story.story(
+      update,
+      Story.with(firstRoundModel),
+      Story.message(ClickedSession({ sessionId: secondSessionId })),
+      Story.model(model => {
+        expect(model.activeSessionId).toStrictEqual(Option.some(secondSessionId))
+        expect(model.round).toStrictEqual(Option.none())
+        expect(model.status).toBe('Loading round…')
+      }),
+      Story.Command.expectExact(fetchSecondRound),
+      Story.Command.resolve(
+        fetchSecondRound,
+        GotRound({ sessionId: secondSessionId, round: secondRound }),
+      ),
+    )
+  })
+
+  test('GotRound displays the arriving round and makes its session active', () => {
+    Story.story(
+      update,
+      Story.with(emptyModel),
+      Story.message(GotRound({ sessionId: secondSessionId, round: secondRound })),
+      Story.model(model => {
+        expect(model.activeSessionId).toStrictEqual(Option.some(secondSessionId))
+        expect(model.round).toStrictEqual(Option.some(secondRound))
+      }),
+      Story.Command.expectNone(),
+    )
+  })
+
+  test('ClickedOption replaces a single-select answer', () => {
+    Story.story(
+      update,
+      Story.with(firstRoundModel),
+      Story.message(ClickedOption({ questionId: 'single-choice', label: 'Beta' })),
+      Story.model(model => {
+        expect(model.answers['single-choice']?.selected).toStrictEqual(['Beta'])
+      }),
+      Story.Command.expectNone(),
+    )
+  })
+
+  test('ClickedOption toggles labels in a multi-select answer', () => {
+    Story.story(
+      update,
+      Story.with(firstRoundModel),
+      Story.message(ClickedOption({ questionId: 'multiple-choice', label: 'Blue' })),
+      Story.model(model => {
+        expect(model.answers['multiple-choice']?.selected).toStrictEqual(['Red', 'Blue'])
+      }),
+      Story.message(ClickedOption({ questionId: 'multiple-choice', label: 'Red' })),
+      Story.model(model => {
+        expect(model.answers['multiple-choice']?.selected).toStrictEqual(['Blue'])
+      }),
+      Story.Command.expectNone(),
+    )
+  })
+})
