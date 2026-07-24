@@ -10,14 +10,16 @@ message, wait for a reply" decision loop with a click-through UI.
 
 ## Non-negotiables
 
-- **Nix-agnostic product.** This repo is a normal npm package, publishable to npm,
-  open-sourceable (MIT). It knows nothing about Nix. Distribution (a `systemd` user daemon,
-  MCP-free CLI on PATH, agent instruction wiring) is done *elsewhere* by a thin Nix wrapper
-  that fetches the tarball and wraps the bin behind `node` — the exact pattern used for
-  `chrome-devtools-mcp` / `playwright-mcp`.
-- **Effect v4 + Effect Schema, everywhere.** `effect@4.0.0-beta.x` (barrel imports:
-  `import { Schema, Effect } from 'effect'`). One Schema contract (`src/domain/contract.ts`)
-  is shared by server, CLI, and UI. Decode is fail-loud at every boundary.
+- **Nix-agnostic *product*.** The published npm package is a normal, MIT, `node`-run CLI that
+  knows nothing about Nix. The repo does carry dev/ops files (`devenv.nix`, `.github/`,
+  `Dockerfile`), but the `files` allowlist ships only `dist` + `bin`, so none of them reach the
+  npm tarball. Primary distribution stays a thin Nix wrapper (fetch tarball, wrap the bin behind
+  `nodejs_26`, run `grill serve` as a `systemd` user daemon) — the pattern used for
+  `chrome-devtools-mcp` / `playwright-mcp`; the in-repo `Dockerfile` is a secondary vector.
+- **Effect v4 + Effect Schema, everywhere.** `effect@4.0.0-beta.97` (barrel imports:
+  `import { Schema, Effect } from 'effect'`; pinned to match Foldkit's peer dep). One Schema
+  contract (`src/domain/contract.ts`) is shared by server, CLI, and UI. Decode is fail-loud at
+  every boundary.
 - **CLI only — no MCP.** Agents drive it with a small CLI that has real `--help` and worked
   examples on every subcommand.
 - **Dark mode by default.**
@@ -27,10 +29,15 @@ message, wait for a reply" decision loop with a click-through UI.
 | Layer     | Choice                                                                            |
 | --------- | --------------------------------------------------------------------------------- |
 | Contracts | Effect **Schema** (`src/domain/contract.ts`)                                       |
-| Server    | Effect **HttpApi** (`effect/unstable/http`) with derived **OpenAPI**; serves the SPA |
+| Server    | Effect **HttpApi** (`effect/unstable/httpapi`) with derived **OpenAPI**; serves the SPA |
 | CLI       | Effect CLI over an `HttpApiClient` built from the same contract                    |
-| Frontend  | **Foldkit** (`foldkit@0.131`, Elm architecture — Model *is* a Schema), Vite + Tailwind 4 |
-| Rich text | **`@foldkit/markdown`** for markdown blocks                                        |
+| Frontend  | **Foldkit** (`foldkit@0.131`, Elm architecture — Model *is* a Schema) + `@foldkit/devtools`, Vite 8 + Tailwind 4 |
+| Rich text | **`@foldkit/markdown`** (build-time); runtime agent markdown via a small Foldkit-`Html` fold |
+| Runtime   | **Node 26** (the shipped runtime); **bun** as the dev package manager — *not* the runtime |
+| Types     | **TypeScript 7** (`tsc` + native `tsgo`); **`@effect/tsgo`** + **`@effect/language-service`** for Effect-aware diagnostics + editor LSP |
+| Lint/fmt  | **oxlint** (type-aware, via `oxlint-tsgolint`) + **oxfmt** (configured to the Effect no-semi / single-quote style) |
+| Tests     | **Vitest** + **`@effect/vitest`** (`it.effect`)                                    |
+| Dev env   | **devenv** (`devenv.nix` + `.envrc`) → bun + `nodejs_26` + `typescript-go`         |
 
 Pinned references (read these — they are ground truth at the revision in use):
 - Effect v4 usage, HttpApi, Schema: `~/dev/vs-point/finvestor/finvestor-front/develop`
@@ -43,6 +50,29 @@ Pinned references (read these — they are ground truth at the revision in use):
   options-with-recommended, Accept-all-recommended, per-session isolation): `prototype/` in
   this repo (`node prototype/serve.mjs`) — reproduce its look and behavior in Foldkit; do not
   ship its Node server.
+
+## Development
+
+Toolchain comes from `devenv.nix` (via `.envrc` / direnv): **bun**, **Node 26**, **tsgo**.
+`direnv allow` once, or run any command through `direnv exec . <cmd>`. Package manager is bun;
+tests run via **vitest** (not `bun test`).
+
+| Command | What |
+| --- | --- |
+| `bun install` | install deps (writes `bun.lock`) |
+| `bun run dev` | Vite dev server for the SPA |
+| `bun run typecheck` | `tsc --noEmit` (TypeScript 7) |
+| `bun run check:effect` | `effect-tsgo diagnostics` — Effect-aware warnings/suggestions |
+| `bun run lint` / `lint:fix` | oxlint (type-aware) |
+| `bun run format` / `format:check` | oxfmt |
+| `bun run test` | Vitest (+ `@effect/vitest`) |
+| `bun run build` | `tsc` server/CLI → `dist` + `vite build` SPA |
+
+CI (`.github/workflows/ci.yml`) runs the full gate on push/PR and builds the Docker image;
+`release.yml` publishes to npm on a `v*` tag (needs the `NPM_TOKEN` secret).
+
+> bun drops the exec bit on `@effect/tsgo`'s prebuilt platform binary; the devenv `enterShell`
+> and the CI both restore it (`chmod +x node_modules/@effect/tsgo-*/lib/tsc`).
 
 ## The one binary: `grill`
 
@@ -65,6 +95,8 @@ together are the "blocking with resumable ticket" semantics.
 
 - `GET  /api/sessions` → `Inbox` (pending first).
 - `GET  /api/round?session=<id>` → `Round` (404 if none).
+- `POST /api/round` → `Round` body → persisted for its session. This is how `grill ask` posts;
+  the CLI is a pure `HttpApiClient` and never touches `GRILL_STATE` — the server solely owns it.
 - `POST /api/answer` → `Answer` body → persisted; validated against the contract.
 - `GET  /api/answer?session=<id>` → last `Answer` (debug).
 - `POST /api/attachments` (multipart) → `{ id }`; `GET /attachments/<id>` serves it.
@@ -90,9 +122,13 @@ Per-option `preview` is the comparison affordance: show two mockups, pick one.
 ## Distribution (NOT in this repo — documented here for context)
 
 A Nix wrapper (in the user's `~/nixos`) will: `packages/grill.nix` fetch the published tarball
-and wrap `grill` behind node; `systemd.user.services.grill` run `grill serve` always-on; add a
-shared block in `agent-bodies.nix` so every agent learns to reach for `grill` instead of
+and wrap `grill` behind `nodejs_26`; `systemd.user.services.grill` run `grill serve` always-on;
+add a shared block in `agent-bodies.nix` so every agent learns to reach for `grill` instead of
 blocking in chat. None of that belongs here.
+
+The in-repo **`Dockerfile`** is a secondary vector (for non-Nix hosts): `docker build -t grill .`
+then `docker run -p 4100:4100 -v grill-state:/state grill` runs `grill serve` under Node 26
+(`GRILL_HOST=0.0.0.0`, state on the `/state` volume).
 
 ## Layout (target)
 
